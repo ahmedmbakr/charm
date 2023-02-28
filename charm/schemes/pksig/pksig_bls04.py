@@ -33,14 +33,15 @@ class BLS01(IBSig):
     """
     def __init__(self, groupObj):
         IBSig.__init__(self)
-        global group
-        group = groupObj
-        
+        self.group = groupObj
+
     def dump(self, obj):
-        return objectToBytes(obj, group)
+        return objectToBytes(obj, self.group)
             
-    def keygen(self, secparam=None):
-        g, x = group.random(G2), group.random()
+    def keygen(self, g=None, secparam=None):
+        if not g:
+            g = self.group.random(G2)
+        x = self.group.random()
         g_x = g ** x
         pk = { 'g^x':g_x, 'g':g, 'identity':str(g_x), 'secparam':secparam }
         sk = { 'x':x }
@@ -49,11 +50,11 @@ class BLS01(IBSig):
     def sign(self, x, message):
         M = self.dump(message)
         if debug: print("Message => '%s'" % M)
-        return group.hash(M, G1) ** x
+        return self.group.hash(M, G1) ** x
         
     def verify(self, pk, sig, message):
         M = self.dump(message)
-        h = group.hash(M, G1)
+        h = self.group.hash(M, G1)
         if pair(sig, pk['g']) == pair(h, pk['g^x']):
             return True  
         return False 
