@@ -29,7 +29,7 @@ class AVES(BLS01):
         This function aggregates all the signatures by multiplying all of them to produce a short aggregated signature
         """
         aggregated_signature = list_of_individual_signatures[0] # you cannot initialize the value with 1 first, because you will be multiplying int with a point, so an error will be raised in this case
-        for i in range(len(list_of_individual_signatures), 1):
+        for i in range(1, len(list_of_individual_signatures)):
             aggregated_signature = aggregated_signature * list_of_individual_signatures[i]
 
         return aggregated_signature
@@ -44,11 +44,13 @@ class AVES(BLS01):
             h = self.group.hash(M, G1)
             individual_sig = pair(h, a_pk['g^x'])
             list_of_individual_signatures.append(individual_sig)
+
         rhs_value = list_of_individual_signatures[0]
-        for i in range(len(list_of_individual_signatures), 1):
+        for i in range(1, len(list_of_individual_signatures)):
             rhs_value = rhs_value * list_of_individual_signatures[i]
         g = list_of_public_keys[0]['g'] # the generator is the same for all keys
-        if pair(aggregated_signature, g) == rhs_value:
+        lhs_value = pair(aggregated_signature, g)
+        if lhs_value == rhs_value:
             return True
         return False
 
@@ -86,24 +88,28 @@ def attack_when_two_users_sign_same_message():
     groupObj = PairingGroup('MNT224')
     alice = BLS01(groupObj)
     (alice_pk, alice_sk) = alice.keygen()
-    bob = BLS01(groupObj)
-    (bob_pk, bob_sk) = alice.keygen()
-    negative_1_group_element = bob.dump(-1)
-    negative_1_group_element = bob.group.hash(negative_1_group_element, G1)
+    group_generator = alice_pk['g']
 
-    bob_forged_pk = bob_pk * (G1/alice_pk)
+    bob = BLS01(groupObj)
+    (bob_pk, bob_sk) = alice.keygen(group_generator)
+
+    bob_forged_pk = bob_pk["g^x"]/alice_pk["g^x"] # Bob recomputed his public key to fool the system
+    bob_pk['g^x'] = bob_forged_pk
+    print("Bob changed his public key to be (bob_public_key / alice_public_key)")
 
     message = "Bob will sign this message, but the aggregated signature will act if alice and bob both signed it"
     bob_sig = bob.sign(bob_sk['x'], message)
+    print("Bob is the only one who signed the message and will send it to the system to be verified as if it is signed by him and Alice")
 
     aves = AVES(groupObj)
-    users_public_keys = [alice_pk, bob_forged_pk]
+    users_public_keys = [alice_pk, bob_pk]
     messages = [message, message]
     assert aves.aggregation_verification(bob_sig, users_public_keys, messages), "Failure!!!"
-    if debug: print('SUCCESS!!! Aggregated signature verified successfully')
+    if debug: print('SUCCESS!!! Aggregated signature verified successfully and the system is fooled')
 
 
 if __name__ == "__main__":
     debug = True
     main()
-    # attack_when_two_users_sign_same_message()
+    print('-----------------------------------------------')
+    attack_when_two_users_sign_same_message()
