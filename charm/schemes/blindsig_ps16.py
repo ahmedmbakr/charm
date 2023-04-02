@@ -13,9 +13,6 @@
  '''
 from charm.toolbox.pairinggroup import PairingGroup, ZR, G1, G2, pair
 from charm.core.engine.util import objectToBytes
-from charm.toolbox.IBSig import *
-from charm.schemes.pksig.pksig_bls04 import BLS01
-from functools import reduce
 from charm.toolbox.PKSig import PKSig
 
 
@@ -220,6 +217,7 @@ class PS_BlindMultiMessageSig(PS_BlindSig):
             return True
         return False
 
+
 class PS_BlindSingleMessageSig(PS_BlindSig):
 
     def __init__(self, groupObj):
@@ -369,6 +367,7 @@ class PS_SigSingleMessage(PS_Sig):
             return True
         return False
 
+
 class PS_SigMultiMessage(PS_Sig):
 
     def __init__(self, groupObj):
@@ -474,6 +473,7 @@ def multi_message_main(debug=False):
         print("Error! This signature is not valid on this message")
     print("***********************************************************************************************************")
 
+
 def blinded_single_message_main(debug=False):
     print("******************************** Blinded Single Message Main **********************************************")
     message = "Welcome to PS signature scheme"
@@ -503,6 +503,7 @@ def blinded_single_message_main(debug=False):
     else:
         print("Error! This signature is not valid on this message")
     print("***********************************************************************************************************")
+
 
 def blinded_multi_message_main(debug=False):
     print("******************************** Blinded Multi Message Main ***********************************************")
@@ -535,10 +536,11 @@ def blinded_multi_message_main(debug=False):
         print("Error! This signature is not valid on this message")
     print("***********************************************************************************************************")
 
+
 if __name__ == "__main__":
     debug = True
-    # single_message_main(debug)
+    single_message_main(debug)
     multi_message_main(debug)
-    # blinded_single_message_main(debug)
-    # blinded_multi_message_main(debug)
+    blinded_single_message_main(debug)
+    blinded_multi_message_main(debug)
     print("done")
