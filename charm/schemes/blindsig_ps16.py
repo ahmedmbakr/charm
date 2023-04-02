@@ -11,10 +11,61 @@
 :Authors:    Ahmed Bakr
 :Date:       04/2023
  '''
+import sys
+# sys.path.append('../..')
+sys.path.append('..')
 from charm.toolbox.pairinggroup import PairingGroup, ZR, G1, G2, pair
 from charm.core.engine.util import objectToBytes
 from charm.toolbox.PKSig import PKSig
 
+
+def dump_to_zp_element(obj, group_obj):
+    serialized_message = objectToBytes(obj, group_obj)
+    return group_obj.hash(serialized_message)  # convert the serialized message to object from Z_p
+class ShnorrInteractiveZKP():
+    class Prover:
+        def __init__(self, secret_value, is_message_an_element, groupObj):
+            self.__r = None
+            self.group = groupObj
+            self.__x = secret_value if is_message_an_element else dump_to_zp_element(secret_value, groupObj)
+
+        def create_prover_commitments(self, generator):
+            """
+            1) This function is executed by the prover to send a random value to the verifier by following these steps:
+                r = random value from Z_p
+                u = generator ** r
+                After that, he sends (generator ** secret_value)
+            """
+            self.__r = self.group.random()
+            u = generator ** self.__r
+            h = generator ** self.__x
+            return u, h
+
+        def create_proof(self, c):
+            """
+            3) This function is executed by the prover after he received the challenge value (c) from the verifier
+            """
+            z = self.__r + c * self.__x
+            return z  # proof
+
+    class Verifier:
+
+        def __init__(self, groupObj):
+            self.group = groupObj
+        def create_verifier_challenge(self):
+            """
+            2) This function is executed by the verifier after he had received the value u from the prover to send a challenge value to the prover.
+            """
+            self.c = self.group.random()
+            return self.c
+
+        def is_proof_verified(self, generator, proof, u, h):
+            """
+            4) This function is executed by the verifier to verify the authenticity of the proof sent by the prover
+            """
+            if (generator ** proof) == u * (h ** self.c):
+                return True
+            return False
 
 class PS_Sig(PKSig):
 
@@ -488,21 +539,50 @@ def blinded_single_message_main(debug=False):
     blinded_message, t = ps_sig.blind(message, pk)
     if debug:
         print("Blinded Message: ", blinded_message)
-    # TODO: AB: The user should send here a proof of knowledge of the original message and the value t before the signer signs the message
 
-    blinded_signature = ps_sig.sign(sk, pk, blinded_message)
-    if debug:
-        print("Blinded signature: ", blinded_signature)
+    # Interactive ZKP
+    # user proves knowledge of the secret message to the signer to accept to sign the blinded message
+    prover_knowledge_of_secret_message_status = run_shnorr_interactive_proof_of_knowledge(message, False, pk, group_obj, debug)
+    print("Verifier validation of the proof status: ", prover_knowledge_of_secret_message_status)
+    # User proves knowledge of the secret value (t) to the siger to accept to sign the blinded message
+    prover_knowledge_of_secret_t_status = run_shnorr_interactive_proof_of_knowledge(t, True, pk, group_obj, debug)
+    print("Verifier validation of the proof status: ", prover_knowledge_of_secret_t_status)
 
-    signature = ps_sig.unblind(blinded_signature, t)
-    if debug:
-        print("Signature: ", signature)
-    verification_res = ps_sig.verify(message, pk, signature)
-    if verification_res:
-        print("Verification is successful")
+    if prover_knowledge_of_secret_message_status and prover_knowledge_of_secret_t_status:
+        blinded_signature = ps_sig.sign(sk, pk, blinded_message)
+        if debug:
+            print("Blinded signature: ", blinded_signature)
+
+        signature = ps_sig.unblind(blinded_signature, t)
+        if debug:
+            print("Signature: ", signature)
+        verification_res = ps_sig.verify(message, pk, signature)
+        if verification_res:
+            print("Verification is successful")
+        else:
+            print("Error! This signature is not valid on this message")
     else:
-        print("Error! This signature is not valid on this message")
+        print("Error! Proof of knowledge verification error")
     print("***********************************************************************************************************")
+
+
+def run_shnorr_interactive_proof_of_knowledge(message, is_message_an_element, pk, group_obj, debug):
+    shnorr_interactive_zkp = ShnorrInteractiveZKP()
+    print(
+        "Prover wants to prove knowledge of the secret message to the signer (verifier) for him to agree to sign the message")
+    prover = shnorr_interactive_zkp.Prover(secret_value=message, is_message_an_element=is_message_an_element, groupObj=group_obj)
+    verifier = shnorr_interactive_zkp.Verifier(groupObj=group_obj)
+    u, h = prover.create_prover_commitments(pk['g'])
+    print("Prover sent commitments to the verifier")
+    if debug:
+        print("u = ", u)
+        print("h = ", h)
+    challenge = verifier.create_verifier_challenge()
+    print("Verifier sends the challenge to the prover: ", challenge)
+    proof = prover.create_proof(challenge)
+    print("Prover sends the proof of knowledge to the verifier: ", proof)
+    prover_knowledge_of_secret_message_status = verifier.is_proof_verified(pk['g'], proof, u, h)
+    return prover_knowledge_of_secret_message_status
 
 
 def blinded_multi_message_main(debug=False):
@@ -519,21 +599,33 @@ def blinded_multi_message_main(debug=False):
     blinded_message, t = ps_sig.blind(messages, pk)
     if debug:
         print("Blinded Message: ", blinded_message)
-    # TODO: AB: The user should send here a proof of knowledge of the original message and the value t before the signer signs the message
+        # Interactive ZKP
+        # user proves knowledge of the secret message to the signer to accept to sign the blinded message
+        prover_knowledge_of_secret_messages_final_status = True
+        for message in messages:
+            prover_knowledge_of_secret_message_status = run_shnorr_interactive_proof_of_knowledge(message, False, pk,
+                                                                                                  group_obj, debug)
+            prover_knowledge_of_secret_messages_final_status &= prover_knowledge_of_secret_message_status
+            print("Verifier validation of the proof status: ", prover_knowledge_of_secret_message_status)
+        # User proves knowledge of the secret value (t) to the siger to accept to sign the blinded message
+        prover_knowledge_of_secret_t_status = run_shnorr_interactive_proof_of_knowledge(t, True, pk, group_obj, debug)
+        print("Verifier validation of the proof status: ", prover_knowledge_of_secret_t_status)
+    if prover_knowledge_of_secret_messages_final_status and prover_knowledge_of_secret_t_status:
+        blinded_signature = ps_sig.sign(sk, pk, blinded_message)
+        if debug:
+            print("Blinded signature: ", blinded_signature)
 
-    blinded_signature = ps_sig.sign(sk, pk, blinded_message)
-    if debug:
-        print("Blinded signature: ", blinded_signature)
+        signature = ps_sig.unblind(blinded_signature, t)
+        if debug:
+            print("Signature: ", signature)
 
-    signature = ps_sig.unblind(blinded_signature, t)
-    if debug:
-        print("Signature: ", signature)
-
-    verification_res = ps_sig.verify(messages, pk, signature)
-    if verification_res:
-        print("Verification is successful")
+        verification_res = ps_sig.verify(messages, pk, signature)
+        if verification_res:
+            print("Verification is successful")
+        else:
+            print("Error! This signature is not valid on this message")
     else:
-        print("Error! This signature is not valid on this message")
+        print("Error! Proof of knowledge verification error")
     print("***********************************************************************************************************")
 
 
