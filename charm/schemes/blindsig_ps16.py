@@ -369,8 +369,70 @@ class PS_SigSingleMessage(PS_Sig):
             return True
         return False
 
+class PS_SigMultiMessage(PS_Sig):
+
+    def __init__(self, groupObj):
+        PS_Sig.__init__(self, groupObj)
+
+    def keygen(self, num_messages):
+        """
+        This function is used to generate the secret key and the public key of the signer
+        Inputs:
+            - num_message: Number of messages
+        """
+        g_tilde = self.group.random(G2)
+        x = self.group.random()
+        ys = [self.group.random() for i in range(num_messages)]
+        X_tilde = g_tilde ** x
+        Ys_tilde = [g_tilde ** y for y in ys]
+
+        pk = {'g_tilde': g_tilde, 'X_tilde': X_tilde, 'Ys_tilde': Ys_tilde}
+        sk = {'x': x, 'ys': ys}
+
+        return sk, pk
+
+    def sign(self, sk, messages):
+        """
+        This function is used for the signer to sign a message
+        Inputs:
+            - sk: Secret key of the signer
+            - messages: List of messages to be signed
+        Outputs:
+            - sigma: Signature on the message
+        """
+        ms = [self._dump_to_zp_element(message) for message in messages]
+        h = self.group.random(G1)
+        Y_multiply_m_sum = sk['ys'][0] * ms[0]
+        for i in range(1, len(ms)):
+            Y_multiply_m_sum += sk['ys'][i] * ms[i]
+        sigma = (h, h ** (sk['x'] + Y_multiply_m_sum))
+
+        return sigma
+
+    def verify(self, messages, pk, sig) -> bool:
+        """
+        This function is used for the user to verify a signature on a specific message using the message and the public
+        key of the signer.
+        Inputs:
+            - messages: The list of messages
+            - pk: Public key
+            - sig: signature
+        Outputs:
+            - True if the signature is valid on the message by the user whose public key is pk
+            - False, otherwise
+        """
+        sigma_1, sigma_2 = sig
+        ms = [self._dump_to_zp_element(message) for message in messages]
+        Y_tilde_pow_m_product = pk['Ys_tilde'][0] ** ms[0]
+        for i in range(1, len(ms)):
+            Y_tilde_pow_m_product *= pk['Ys_tilde'][i] ** ms[i]
+        if pair(sigma_1, pk['X_tilde'] * Y_tilde_pow_m_product) == pair(sigma_2, pk['g_tilde']):
+            return True
+        return False
+
 
 def single_message_main(debug=False):
+    print("************************************** Single Message Main ************************************************")
     message = "Welcome to PS signature scheme"
     group_obj = PairingGroup('MNT224')
     ps_sig = PS_SigSingleMessage(group_obj)
@@ -388,9 +450,32 @@ def single_message_main(debug=False):
         print("Verification is successful")
     else:
         print("Error! This signature is not valid on this message")
+    print("***********************************************************************************************************")
 
+
+def multi_message_main(debug=False):
+    print("**************************************** Multi Messages Main **********************************************")
+    messages = ["Welcome to PS signature scheme", "PS can be used in many applications", "Most importantly, it can generate anonymous signatures"]
+    group_obj = PairingGroup('MNT224')
+    ps_sig = PS_SigMultiMessage(group_obj)
+
+    sk, pk = ps_sig.keygen(len(messages))
+    if debug:
+        print("sk = ", sk)
+        print("pk = ", pk)
+
+    sigma = ps_sig.sign(sk, messages)
+    if debug:
+        print("signature: ", sigma)
+    verification_res = ps_sig.verify(messages, pk, sigma)
+    if verification_res:
+        print("Verification is successful")
+    else:
+        print("Error! This signature is not valid on this message")
+    print("***********************************************************************************************************")
 
 def blinded_single_message_main(debug=False):
+    print("******************************** Blinded Single Message Main **********************************************")
     message = "Welcome to PS signature scheme"
     group_obj = PairingGroup('MNT224')
     ps_sig = PS_BlindSingleMessageSig(group_obj)
@@ -417,8 +502,10 @@ def blinded_single_message_main(debug=False):
         print("Verification is successful")
     else:
         print("Error! This signature is not valid on this message")
+    print("***********************************************************************************************************")
 
 def blinded_multi_message_main(debug=False):
+    print("******************************** Blinded Multi Message Main ***********************************************")
     messages = ["Welcome to PS signature scheme", "PS can be used in many applications", "Most importantly, it can generate anonymous signatures"]
     group_obj = PairingGroup('MNT224')
     ps_sig = PS_BlindMultiMessageSig(group_obj)
@@ -446,11 +533,12 @@ def blinded_multi_message_main(debug=False):
         print("Verification is successful")
     else:
         print("Error! This signature is not valid on this message")
-
+    print("***********************************************************************************************************")
 
 if __name__ == "__main__":
     debug = True
     # single_message_main(debug)
+    multi_message_main(debug)
     # blinded_single_message_main(debug)
-    blinded_multi_message_main(debug)
+    # blinded_multi_message_main(debug)
     print("done")
