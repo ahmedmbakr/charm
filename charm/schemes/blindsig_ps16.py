@@ -24,34 +24,35 @@ def dump_to_zp_element(obj, group_obj):
     return group_obj.hash(serialized_message)  # convert the serialized message to object from Z_p
 class ShnorrInteractiveZKP():
     class Prover:
-        def __init__(self, secret_value, is_message_an_element, groupObj):
-            self.__r = None
+        def __init__(self, secret_t, secret_message, groupObj):
+            self.__r_t = None
+            self.__r_m = None
             self.group = groupObj
-            self.__x = secret_value if is_message_an_element else dump_to_zp_element(secret_value, groupObj)
+            self.__m = dump_to_zp_element(secret_message, groupObj)
+            self.__t = secret_t # t is an element, so no need to transform it into an element
 
-        def create_prover_commitments(self, generator):
+        def create_prover_commitments(self, pk):
             """
-            1) This function is executed by the prover to send a random value to the verifier by following these steps:
-                r = random value from Z_p
-                u = generator ** r
-                After that, he sends (generator ** secret_value)
+            1) This function is executed by the prover to send a random value to the verifier
             """
-            self.__r = self.group.random()
-            u = generator ** self.__r
-            h = generator ** self.__x
-            return u, h
+            self.__r_m = self.group.random()
+            self.__r_t = self.group.random()
+            Rc = pk['g'] ** self.__r_t * pk['Y'] ** self.__r_m # Follow the same equation used to blind the message
+            return Rc
 
         def create_proof(self, c):
             """
             3) This function is executed by the prover after he received the challenge value (c) from the verifier
             """
-            z = self.__r + c * self.__x
-            return z  # proof
+            s_t = self.__r_t + c * self.__t
+            s_m = self.__r_m + c * self.__m
+            return (s_t, s_m)  # proof
 
     class Verifier:
 
         def __init__(self, groupObj):
             self.group = groupObj
+
         def create_verifier_challenge(self):
             """
             2) This function is executed by the verifier after he had received the value u from the prover to send a challenge value to the prover.
@@ -59,11 +60,11 @@ class ShnorrInteractiveZKP():
             self.c = self.group.random()
             return self.c
 
-        def is_proof_verified(self, generator, proof, u, h):
+        def is_proof_verified(self, s_t, s_m, pk, blinded_message, commitment):
             """
             4) This function is executed by the verifier to verify the authenticity of the proof sent by the prover
             """
-            if (generator ** proof) == u * (h ** self.c):
+            if (pk['g'] ** s_t) * (pk['Y'] ** s_m) == (blinded_message ** self.c) * commitment:
                 return True
             return False
 
@@ -542,13 +543,10 @@ def blinded_single_message_main(debug=False):
 
     # Interactive ZKP
     # user proves knowledge of the secret message to the signer to accept to sign the blinded message
-    prover_knowledge_of_secret_message_status = run_shnorr_interactive_proof_of_knowledge(message, False, pk, group_obj, debug)
+    prover_knowledge_of_secret_message_status = run_shnorr_interactive_proof_of_knowledge(t, message, blinded_message, pk, group_obj, debug)
     print("Verifier validation of the proof status: ", prover_knowledge_of_secret_message_status)
-    # User proves knowledge of the secret value (t) to the siger to accept to sign the blinded message
-    prover_knowledge_of_secret_t_status = run_shnorr_interactive_proof_of_knowledge(t, True, pk, group_obj, debug)
-    print("Verifier validation of the proof status: ", prover_knowledge_of_secret_t_status)
 
-    if prover_knowledge_of_secret_message_status and prover_knowledge_of_secret_t_status:
+    if prover_knowledge_of_secret_message_status:
         blinded_signature = ps_sig.sign(sk, pk, blinded_message)
         if debug:
             print("Blinded signature: ", blinded_signature)
@@ -566,22 +564,24 @@ def blinded_single_message_main(debug=False):
     print("***********************************************************************************************************")
 
 
-def run_shnorr_interactive_proof_of_knowledge(message, is_message_an_element, pk, group_obj, debug):
+def run_shnorr_interactive_proof_of_knowledge(t, message, blinded_message, pk, group_obj, debug):
     shnorr_interactive_zkp = ShnorrInteractiveZKP()
     print(
         "Prover wants to prove knowledge of the secret message to the signer (verifier) for him to agree to sign the message")
-    prover = shnorr_interactive_zkp.Prover(secret_value=message, is_message_an_element=is_message_an_element, groupObj=group_obj)
+    prover = shnorr_interactive_zkp.Prover(secret_t=t, secret_message=message, groupObj=group_obj)
     verifier = shnorr_interactive_zkp.Verifier(groupObj=group_obj)
-    u, h = prover.create_prover_commitments(pk['g'])
+    commitments = prover.create_prover_commitments(pk)
     print("Prover sent commitments to the verifier")
     if debug:
-        print("u = ", u)
-        print("h = ", h)
+        print("Rc = ", commitments)
     challenge = verifier.create_verifier_challenge()
     print("Verifier sends the challenge to the prover: ", challenge)
-    proof = prover.create_proof(challenge)
-    print("Prover sends the proof of knowledge to the verifier: ", proof)
-    prover_knowledge_of_secret_message_status = verifier.is_proof_verified(pk['g'], proof, u, h)
+    s_t, s_m = prover.create_proof(challenge)
+    print("Prover sends the proof of knowledge to the verifier: ")
+    if debug:
+        print("s_t: ", s_t)
+        print("s_m: ", s_m)
+    prover_knowledge_of_secret_message_status = verifier.is_proof_verified(s_t, s_m, pk, blinded_message, commitments)
     return prover_knowledge_of_secret_message_status
 
 
@@ -634,5 +634,5 @@ if __name__ == "__main__":
     single_message_main(debug)
     multi_message_main(debug)
     blinded_single_message_main(debug)
-    blinded_multi_message_main(debug)
+    # blinded_multi_message_main(debug)
     print("done")
