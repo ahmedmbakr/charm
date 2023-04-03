@@ -12,8 +12,6 @@
 :Date:       04/2023
  '''
 import sys
-# sys.path.append('../..')
-sys.path.append('..')
 from charm.toolbox.pairinggroup import PairingGroup, ZR, G1, G2, pair
 from charm.core.engine.util import objectToBytes
 from charm.toolbox.PKSig import PKSig
@@ -24,20 +22,25 @@ def dump_to_zp_element(obj, group_obj):
     return group_obj.hash(serialized_message)  # convert the serialized message to object from Z_p
 class ShnorrInteractiveZKP():
     class Prover:
-        def __init__(self, secret_t, secret_message, groupObj):
+        def __init__(self, secret_t, secret_messages, groupObj):
             self.__r_t = None
-            self.__r_m = None
+            self.__r_ms = None
             self.group = groupObj
-            self.__m = dump_to_zp_element(secret_message, groupObj)
+            self.__ms = [dump_to_zp_element(secret_message, groupObj) for secret_message in secret_messages]
             self.__t = secret_t # t is an element, so no need to transform it into an element
 
         def create_prover_commitments(self, pk):
             """
             1) This function is executed by the prover to send a random value to the verifier
             """
-            self.__r_m = self.group.random()
+            if 'Ys' not in pk:
+                pk['Ys'] = [pk['Y']] # Hack to convert it to an array because this method is general and used for both single and multiple messages
+            self.__r_ms = [self.group.random() for _ in range(len(self.__ms))]
             self.__r_t = self.group.random()
-            Rc = pk['g'] ** self.__r_t * pk['Y'] ** self.__r_m # Follow the same equation used to blind the message
+            Y_pow_m_prod = pk['Ys'][0] ** self.__r_ms[0]
+            for i in range(1, len(self.__ms)):
+                Y_pow_m_prod *= pk['Ys'][i] ** self.__r_ms[i]
+            Rc = (pk['g'] ** self.__r_t) * Y_pow_m_prod # Follow the same equation used to blind the message
             return Rc
 
         def create_proof(self, c):
@@ -45,8 +48,8 @@ class ShnorrInteractiveZKP():
             3) This function is executed by the prover after he received the challenge value (c) from the verifier
             """
             s_t = self.__r_t + c * self.__t
-            s_m = self.__r_m + c * self.__m
-            return (s_t, s_m)  # proof
+            s_ms = [r_m + c * m for (r_m, m) in zip(self.__r_ms, self.__ms)]
+            return (s_t, s_ms)  # proof
 
     class Verifier:
 
@@ -60,11 +63,16 @@ class ShnorrInteractiveZKP():
             self.c = self.group.random()
             return self.c
 
-        def is_proof_verified(self, s_t, s_m, pk, blinded_message, commitment):
+        def is_proof_verified(self, s_t, s_ms, pk, blinded_message, commitment):
             """
             4) This function is executed by the verifier to verify the authenticity of the proof sent by the prover
             """
-            if (pk['g'] ** s_t) * (pk['Y'] ** s_m) == (blinded_message ** self.c) * commitment:
+            if 'Ys' not in pk:
+                pk['Ys'] = [pk['Y']]  # Hack to convert it to an array because this method is general and used for both single and multiple messages
+            Y_pow_m_prod = pk['Ys'][0] ** s_ms[0]
+            for i in range(1, len(s_ms)):
+                Y_pow_m_prod *= pk['Ys'][i] ** s_ms[i]
+            if (pk['g'] ** s_t) * Y_pow_m_prod == (blinded_message ** self.c) * commitment:
                 return True
             return False
 
@@ -543,7 +551,7 @@ def blinded_single_message_main(debug=False):
 
     # Interactive ZKP
     # user proves knowledge of the secret message to the signer to accept to sign the blinded message
-    prover_knowledge_of_secret_message_status = run_shnorr_interactive_proof_of_knowledge(t, message, blinded_message, pk, group_obj, debug)
+    prover_knowledge_of_secret_message_status = run_shnorr_interactive_proof_of_knowledge(t, [message], blinded_message, pk, group_obj, debug)
     print("Verifier validation of the proof status: ", prover_knowledge_of_secret_message_status)
 
     if prover_knowledge_of_secret_message_status:
@@ -564,11 +572,11 @@ def blinded_single_message_main(debug=False):
     print("***********************************************************************************************************")
 
 
-def run_shnorr_interactive_proof_of_knowledge(t, message, blinded_message, pk, group_obj, debug):
+def run_shnorr_interactive_proof_of_knowledge(t, messages, blinded_message, pk, group_obj, debug):
     shnorr_interactive_zkp = ShnorrInteractiveZKP()
     print(
         "Prover wants to prove knowledge of the secret message to the signer (verifier) for him to agree to sign the message")
-    prover = shnorr_interactive_zkp.Prover(secret_t=t, secret_message=message, groupObj=group_obj)
+    prover = shnorr_interactive_zkp.Prover(secret_t=t, secret_messages=messages, groupObj=group_obj)
     verifier = shnorr_interactive_zkp.Verifier(groupObj=group_obj)
     commitments = prover.create_prover_commitments(pk)
     print("Prover sent commitments to the verifier")
@@ -599,18 +607,14 @@ def blinded_multi_message_main(debug=False):
     blinded_message, t = ps_sig.blind(messages, pk)
     if debug:
         print("Blinded Message: ", blinded_message)
-        # Interactive ZKP
-        # user proves knowledge of the secret message to the signer to accept to sign the blinded message
-        prover_knowledge_of_secret_messages_final_status = True
-        for message in messages:
-            prover_knowledge_of_secret_message_status = run_shnorr_interactive_proof_of_knowledge(message, False, pk,
-                                                                                                  group_obj, debug)
-            prover_knowledge_of_secret_messages_final_status &= prover_knowledge_of_secret_message_status
-            print("Verifier validation of the proof status: ", prover_knowledge_of_secret_message_status)
-        # User proves knowledge of the secret value (t) to the siger to accept to sign the blinded message
-        prover_knowledge_of_secret_t_status = run_shnorr_interactive_proof_of_knowledge(t, True, pk, group_obj, debug)
-        print("Verifier validation of the proof status: ", prover_knowledge_of_secret_t_status)
-    if prover_knowledge_of_secret_messages_final_status and prover_knowledge_of_secret_t_status:
+    # Interactive ZKP
+    # user proves knowledge of the secret message to the signer to accept to sign the blinded message
+    prover_knowledge_of_secret_messages_status = run_shnorr_interactive_proof_of_knowledge(t, messages,
+                                                                                          blinded_message, pk,
+                                                                                          group_obj, debug)
+    print("Verifier validation of the proof status: ", prover_knowledge_of_secret_messages_status)
+
+    if prover_knowledge_of_secret_messages_status:
         blinded_signature = ps_sig.sign(sk, pk, blinded_message)
         if debug:
             print("Blinded signature: ", blinded_signature)
@@ -634,5 +638,5 @@ if __name__ == "__main__":
     single_message_main(debug)
     multi_message_main(debug)
     blinded_single_message_main(debug)
-    # blinded_multi_message_main(debug)
+    blinded_multi_message_main(debug)
     print("done")
