@@ -110,5 +110,7 @@ def attack_when_two_users_sign_same_message():
 
 if __name__ == "__main__":
     debug = True
-    # main()
+    main()
+    print('-----------------------------------------------')
     attack_when_two_users_sign_same_message()
+
