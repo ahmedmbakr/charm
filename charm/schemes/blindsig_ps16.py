@@ -10,7 +10,29 @@
 
 :Authors:    Ahmed Bakr
 :Date:       04/2023
+
+Description:
+This file implements the four schemes:
+    - Single Message Signature
+        - Implemented in the class `PS_SigSingleMessage`
+        - Tested in the function `single_message_main`
+    - Multi Messages Signature
+        - Implemented in the class `PS_SigMultiMessage`
+        - Tested in the function `multi_message_main`
+    - Blinded Single Message Signature
+        - Implemented in the class `PS_BlindSingleMessageSig`
+        - Tested in the function `blinded_single_message_main`
+    - Blinded Multi Messages Signature
+        - Implemented in the class `PS_SigMultiMessage`
+        - Tested in the function `blinded_multi_message_main`
+
+Notes:
+    - The class `PS_Sig` defines four generic stubs functions that have to be implemented in every signature scheme, which are: keygen, sign, verify
+    - The class `PS_BlindSig` inherits from `PS_Sig` and defines four generic stubs functions that have to be implemented in every signature scheme, which are: keygen, blind, proof_of_knowledge_of_commitment_secrets, sign, unblind, verify
+    - The classes `PS_SigSingleMessage` and `PS_SigMultiMessage` inherit from `PS_Sig`
+    - The classes `PS_BlindSingleMessageSig` and `PS_BlindMultiMessageSig` inherit from `PS_BlindSig`
  '''
+
 import sys
 from charm.toolbox.pairinggroup import PairingGroup, ZR, G1, G2, pair
 from charm.core.engine.util import objectToBytes
@@ -20,6 +42,8 @@ from charm.toolbox.PKSig import PKSig
 def dump_to_zp_element(obj, group_obj):
     serialized_message = objectToBytes(obj, group_obj)
     return group_obj.hash(serialized_message)  # convert the serialized message to object from Z_p
+
+
 class ShnorrInteractiveZKP():
     class Prover:
         def __init__(self, secret_t, secret_messages, groupObj):
@@ -75,6 +99,7 @@ class ShnorrInteractiveZKP():
             if (pk['g'] ** s_t) * Y_pow_m_prod == (blinded_message ** self.c) * commitment:
                 return True
             return False
+
 
 class PS_Sig(PKSig):
 
@@ -161,6 +186,27 @@ class PS_BlindSig(PS_Sig):
         """
         print("This is a stub function. Implement it in the child class")
 
+    def proof_of_knowledge_of_commitment_secrets(self, t, messages, blinded_message, pk, group_obj, debug):
+        """This function runs shnorr' interactive proof of knowledge"""
+        shnorr_interactive_zkp = ShnorrInteractiveZKP()
+        print("Prover wants to prove knowledge of the secret message to the signer (verifier) for him to agree to sign the message")
+        prover = shnorr_interactive_zkp.Prover(secret_t=t, secret_messages=messages, groupObj=group_obj)
+        verifier = shnorr_interactive_zkp.Verifier(groupObj=group_obj)
+        commitments = prover.create_prover_commitments(pk)
+        print("Prover sent commitments to the verifier")
+        if debug:
+            print("Rc = ", commitments)
+        challenge = verifier.create_verifier_challenge()
+        print("Verifier sends the challenge to the prover: ", challenge)
+        s_t, s_m = prover.create_proof(challenge)
+        print("Prover sends the proof of knowledge to the verifier: ")
+        if debug:
+            print("s_t: ", s_t)
+            print("s_m: ", s_m)
+        prover_knowledge_of_secret_message_status = verifier.is_proof_verified(s_t, s_m, pk, blinded_message, commitments)
+        return prover_knowledge_of_secret_message_status
+
+
     def verify(self, message, pk, sig) -> bool:
         """
         This function is used for the user to verify a signature on a specific message using the message and the public
@@ -174,6 +220,102 @@ class PS_BlindSig(PS_Sig):
             - False, otherwise
         """
         print("This is a stub function. Implement it in the child class")
+
+
+class PS_BlindSingleMessageSig(PS_BlindSig):
+
+    def __init__(self, groupObj):
+        PS_BlindSig.__init__(self, groupObj)
+
+    def keygen(self):
+        """
+        This function is used to generate the secret key and the public key of the signer
+        Outputs:
+            - sk: Secret key
+            - pk: public key
+        """
+        g = self.group.random(G1)
+        g_tilde = self.group.random(G2)
+        x = self.group.random()
+        y = self.group.random()
+
+        X = g ** x
+        Y = g ** y
+        X_tilde = g_tilde ** x
+        Y_tilde = g_tilde ** y
+
+        pk = {'g': g, 'Y': Y, 'g_tilde': g_tilde, 'X_tilde': X_tilde, 'Y_tilde': Y_tilde}
+        sk = {'X': X}
+
+        return sk, pk
+
+    def blind(self, message, pk):
+        """
+        This function takes a message and blinds it to return a blinded message.
+        Inputs:
+            - message: message to be blinded
+            - pk: pk is needed to know some of the public parameters used in message blinding
+        Outputs:
+            - C: A blinded message
+            - t: Blind random value
+        """
+        m = self._dump_to_zp_element(message)  # serialize the message to an element
+        t = self.group.random()
+        C = (pk['g'] ** t) * (pk['Y'] ** m)
+
+        return C, t
+
+    def sign(self, sk, pk, blinded_message):
+        """
+        This function is used for the signer to sign a message
+        Inputs:
+            - sk: Secret key of the signer
+            - pk: Public key of the signer
+            - blinded_message: A blinded message to be signed
+        Outputs:
+            - sigma_dash: Signature on the blinded message
+        """
+        C = blinded_message
+        u = self.group.random()
+        sigma_dash_1 = pk['g'] ** u
+        sigma_dash_2 = (sk['X'] * C) ** u
+        sigma_dash = (sigma_dash_1, sigma_dash_2)
+
+        return sigma_dash
+
+    def unblind(self, blinded_sig, t):
+        """
+        This function takes a blinded signature and returns the unblinded signature
+        Inputs:
+            - blinded_sig: Blinded signature
+            - t: random number used to blind the original message
+        Outputs:
+            - sigma: unblinded signature
+        """
+        sigma_dash_1, sigma_dash_2 = blinded_sig
+        sigma_1 = sigma_dash_1
+        sigma_2 = sigma_dash_2 / (sigma_dash_1 ** t)
+
+        sigma = (sigma_1, sigma_2)
+        return sigma
+
+    def verify(self, message, pk, sig) -> bool:
+        """
+        This function is used for the user to verify a signature on a specific message using the message and the public
+        key of the signer.
+        Inputs:
+            - message: The message
+            - pk: Public key
+            - sig: signature
+        Outputs:
+            - True if the signature is valid on the message by the user whose public key is pk
+            - False, otherwise
+        """
+        sigma_1, sigma_2 = sig
+        m = self._dump_to_zp_element(message)  # serialize the message to an element
+        if pair(sigma_1, pk['X_tilde'] * (pk['Y_tilde'] ** m)) == pair(sigma_2, pk['g_tilde']):
+            return True
+        return False
 
 
 class PS_BlindMultiMessageSig(PS_BlindSig):
@@ -274,102 +416,6 @@ class PS_BlindMultiMessageSig(PS_BlindSig):
         for i in range(1, len(ms)):
             Y_pow_m_product *= pk['Ys_tilde'][i] ** ms[i]
         if pair(sigma_1, pk['X_tilde'] * Y_pow_m_product) == pair(sigma_2, pk['g_tilde']):
-            return True
-        return False
-
-
-class PS_BlindSingleMessageSig(PS_BlindSig):
-
-    def __init__(self, groupObj):
-        PS_BlindSig.__init__(self, groupObj)
-
-    def keygen(self):
-        """
-        This function is used to generate the secret key and the public key of the signer
-        Outputs:
-            - sk: Secret key
-            - pk: public key
-        """
-        g = self.group.random(G1)
-        g_tilde = self.group.random(G2)
-        x = self.group.random()
-        y = self.group.random()
-
-        X = g ** x
-        Y = g ** y
-        X_tilde = g_tilde ** x
-        Y_tilde = g_tilde ** y
-
-        pk = {'g': g, 'Y': Y, 'g_tilde': g_tilde, 'X_tilde': X_tilde, 'Y_tilde': Y_tilde}
-        sk = {'X': X}
-
-        return sk, pk
-
-    def blind(self, message, pk):
-        """
-        This function takes a message and blinds it to return a blinded message.
-        Inputs:
-            - message: message to be blinded
-            - pk: pk is needed to know some of the public parameters used in message blinding
-        Outputs:
-            - C: A blinded message
-            - t: Blind random value
-        """
-        m = self._dump_to_zp_element(message)  # serialize the message to an element
-        t = self.group.random()
-        C = (pk['g'] ** t) * (pk['Y'] ** m)
-
-        return C, t
-
-    def sign(self, sk, pk, blinded_message):
-        """
-        This function is used for the signer to sign a message
-        Inputs:
-            - sk: Secret key of the signer
-            - pk: Public key of the signer
-            - blinded_message: A blinded message to be signed
-        Outputs:
-            - sigma_dash: Signature on the blinded message
-        """
-        C = blinded_message
-        u = self.group.random()
-        sigma_dash_1 = pk['g'] ** u
-        sigma_dash_2 = (sk['X'] * C) ** u
-        sigma_dash = (sigma_dash_1, sigma_dash_2)
-
-        return sigma_dash
-
-    def unblind(self, blinded_sig, t):
-        """
-        This function takes a blinded signature and returns the unblinded signature
-        Inputs:
-            - blinded_sig: Blinded signature
-            - t: random number used to blind the original message
-        Outputs:
-            - sigma: unblinded signature
-        """
-        sigma_dash_1, sigma_dash_2 = blinded_sig
-        sigma_1 = sigma_dash_1
-        sigma_2 = sigma_dash_2 / (sigma_dash_1 ** t)
-
-        sigma = (sigma_1, sigma_2)
-        return sigma
-
-    def verify(self, message, pk, sig) -> bool:
-        """
-        This function is used for the user to verify a signature on a specific message using the message and the public
-        key of the signer.
-        Inputs:
-            - message: The message
-            - pk: Public key
-            - sig: signature
-        Outputs:
-            - True if the signature is valid on the message by the user whose public key is pk
-            - False, otherwise
-        """
-        sigma_1, sigma_2 = sig
-        m = self._dump_to_zp_element(message)  # serialize the message to an element
-        if pair(sigma_1, pk['X_tilde'] * (pk['Y_tilde'] ** m)) == pair(sigma_2, pk['g_tilde']):
             return True
         return False
 
@@ -551,7 +597,7 @@ def blinded_single_message_main(debug=False):
 
     # Interactive ZKP
     # user proves knowledge of the secret message to the signer to accept to sign the blinded message
-    prover_knowledge_of_secret_message_status = run_shnorr_interactive_proof_of_knowledge(t, [message], blinded_message, pk, group_obj, debug)
+    prover_knowledge_of_secret_message_status = ps_sig.proof_of_knowledge_of_commitment_secrets(t, [message], blinded_message, pk, group_obj, debug)
     print("Verifier validation of the proof status: ", prover_knowledge_of_secret_message_status)
 
     if prover_knowledge_of_secret_message_status:
@@ -572,27 +618,6 @@ def blinded_single_message_main(debug=False):
     print("***********************************************************************************************************")
 
 
-def run_shnorr_interactive_proof_of_knowledge(t, messages, blinded_message, pk, group_obj, debug):
-    shnorr_interactive_zkp = ShnorrInteractiveZKP()
-    print(
-        "Prover wants to prove knowledge of the secret message to the signer (verifier) for him to agree to sign the message")
-    prover = shnorr_interactive_zkp.Prover(secret_t=t, secret_messages=messages, groupObj=group_obj)
-    verifier = shnorr_interactive_zkp.Verifier(groupObj=group_obj)
-    commitments = prover.create_prover_commitments(pk)
-    print("Prover sent commitments to the verifier")
-    if debug:
-        print("Rc = ", commitments)
-    challenge = verifier.create_verifier_challenge()
-    print("Verifier sends the challenge to the prover: ", challenge)
-    s_t, s_m = prover.create_proof(challenge)
-    print("Prover sends the proof of knowledge to the verifier: ")
-    if debug:
-        print("s_t: ", s_t)
-        print("s_m: ", s_m)
-    prover_knowledge_of_secret_message_status = verifier.is_proof_verified(s_t, s_m, pk, blinded_message, commitments)
-    return prover_knowledge_of_secret_message_status
-
-
 def blinded_multi_message_main(debug=False):
     print("******************************** Blinded Multi Message Main ***********************************************")
     messages = ["Welcome to PS signature scheme", "PS can be used in many applications", "Most importantly, it can generate anonymous signatures"]
@@ -609,7 +634,7 @@ def blinded_multi_message_main(debug=False):
         print("Blinded Message: ", blinded_message)
     # Interactive ZKP
     # user proves knowledge of the secret message to the signer to accept to sign the blinded message
-    prover_knowledge_of_secret_messages_status = run_shnorr_interactive_proof_of_knowledge(t, messages,
+    prover_knowledge_of_secret_messages_status = ps_sig.proof_of_knowledge_of_commitment_secrets(t, messages,
                                                                                           blinded_message, pk,
                                                                                           group_obj, debug)
     print("Verifier validation of the proof status: ", prover_knowledge_of_secret_messages_status)
