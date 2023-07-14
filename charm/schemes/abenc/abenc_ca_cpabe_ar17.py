@@ -135,7 +135,10 @@ class AM:
 
         return ret_dict
 
-    def get_minimum_nodes_list_that_represent_users_list(self, user_names_list: List[str]):
+    def get_minimum_nodes_list_that_represent_users_list(self, user_names_list: List[str]) -> List[TreeNode]:
+        """
+        This is represented in the paper as calculating node(Gi)
+        """
         visited_arr = [False] * (self.users_binary_tree.sequence_number + 1)
         list_of_leaves_to_traverse = []
 
@@ -178,20 +181,43 @@ class AM:
 
         return ret_list
 
+    def get_user_path(self, user_name) -> List[TreeNode]:
+        ret_list = []
+        user_assignation_to_leafs_dict = self.get_user_assignation_to_leafs_dict()
+        assert user_name in user_assignation_to_leafs_dict, \
+            "Username ({}) must be inside user_assignation_to_leafs_dict ({})".format(user_name,
+                                                                                      user_assignation_to_leafs_dict)
+        user_leaf_node = user_assignation_to_leafs_dict[user_name]
+        curr_node: TreeNode = user_leaf_node
+        while curr_node:
+            ret_list.append(curr_node)
+            curr_node = curr_node.parent
+
+        return ret_list
+
+    @staticmethod
+    def get_user_path_intersection_with_node_gi(user_path: List[TreeNode], node_gi: List[TreeNode]) -> List[TreeNode]:
+        ret_intersection_list = []
+        for user_node in user_path:
+            if user_node in node_gi:
+                ret_intersection_list.append(user_node)
+
+        return ret_intersection_list
+
+
 debug = False
 
 
-class CaCPabeAr(ABEnc):
-    def __init__(self, groupObj):
+class CaCpabeAr(ABEnc):
+    def __init__(self, group_obj):
         ABEnc.__init__(self)
-        global util, group
-        util = SecretUtil(groupObj, verbose=False)
-        group = groupObj
+        self.util = SecretUtil(group_obj, verbose=False)
+        self.group = group_obj
+
 
 def main():
     group_obj = PairingGroup('SS512')
 
-    user_names_list = ['U1', 'U2']
     attributes_manager = AM(group_obj)
     attributes_manager.add_attr_to_user('ONE', 'U1')
     attributes_manager.add_attr_to_user('TWO', 'U1')
@@ -212,8 +238,14 @@ def main():
     print("User Assignation to leafs dict: ", attributes_manager.get_user_assignation_to_leafs_dict())
 
     user_names_list = ['U1', 'U2', 'U3', 'U4', 'U7', 'U8']
-    min_tree_nodes_list = attributes_manager.get_minimum_nodes_list_that_represent_users_list(user_names_list)
-    print(min_tree_nodes_list)
+    node_gi = attributes_manager.get_minimum_nodes_list_that_represent_users_list(user_names_list)
+    print("Node(Gi): ", node_gi)
+
+    user_path = attributes_manager.get_user_path('U1')
+    print("Path(U1): ", user_path)
+
+    intersect_list = AM.get_user_path_intersection_with_node_gi(user_path, node_gi)
+    print("Node(Gi) intersection with Path(U1): ", intersect_list)
 
 
 if __name__ == "__main__":
