@@ -343,12 +343,14 @@ class CaCpabeAr(ABEnc):
             KEK[attr] = {'seq(vj)': vj_node.sequence_number, 'kek_i': kek_i, 'KEK_i': KEK_i}
         return KEK
 
-    def encrypt(self, PP, MPK, M, A: str):
+    def encrypt(self, PP, MPK, MMK, M, A: str, attributes_manager: AM):
         """
-        This function is executed by anyone who wants to encrypt a message with an access policy.
+        This function is executed by anyone who wants to encrypt a message with an access policy, then by AM to
+        perform the re-encryption.
         Inputs:
             - PP: Public Parameters from the system setup algorithm.
             - MPK: Manager public key represented as a dictionary.
+            - MMK: Manager master key represented as a dictionary.
             - M: Message to by encrypted.
             - A: Access policy represented as a boolean expression string.
         Outputs:
@@ -356,15 +358,61 @@ class CaCpabeAr(ABEnc):
             - CT_dash: Ciphertext.
         """
         # Local Encryption
+        CT = self.local_encryption(A, M, PP)
+        CT, Hdr = self.reencryption(CT, MMK, PP, attributes_manager)
+        return CT, Hdr
+
+    def reencryption(self, CT, MMK, PP, attributes_manager):
+        """
+        This function is performed by AM and it is second part of the encryption procedure.
+        """
+        Hdr = {}  # AB: TODO:
+        g = PP['g']
+        kys_dict = {}
+        for attr_name_with_idx in CT['Cy_tilde']:
+            # Index is appended only if the attribute is repeated more than one time to the access policy
+            k_y = self.group.random(ZR)  # AB: TODO: Note, I might need to save this value.
+            kys_dict[attr_name_with_idx] = k_y
+            g_k_y = g ** k_y
+            CT['Cy_tilde'][attr_name_with_idx] = CT['Cy_tilde'][attr_name_with_idx] * g_k_y
+
+            attr_name_without_idx = self.__get_attr_name_without_idx(attr_name_with_idx)
+            if not attr_name_without_idx in attributes_manager.attrs_to_users_dict:
+                # Attribute manager is not responsible for this attribute
+                # AB: TODO: Attention here. You might need to revisit this part.
+                continue
+            Gi = attributes_manager.attrs_to_users_dict[attr_name_without_idx]
+            node_Gi = attributes_manager.get_minimum_nodes_list_that_represent_users_list(Gi)
+
+            assert len(node_Gi) == 1, "The node_Gi list should have only one element."
+            for a_node_Gi in node_Gi:
+                a_node_Gi: TreeNode = a_node_Gi
+                E_k_y = g_k_y ** (a_node_Gi.value / MMK[attr_name_without_idx])
+                Hdr[attr_name_with_idx] = {'seq': a_node_Gi.sequence_number, 'E(k_y)': E_k_y}
+        return CT, Hdr
+
+    def __get_attr_name_without_idx(self, attr_name: str):
+        if attr_name.find('_') == -1:
+            return attr_name
+        val = attr_name.split('_')
+        return val[0]
+
+    def local_encryption(self, A, M, PP):
+        """
+        This function is executed by anyone who wants to encrypt a message with an access policy.
+        Inputs:
+            - A: Access policy represented as a boolean expression string.
+            - M: Message to by encrypted.
+            - PP: Public Parameters from the system setup algorithm.
+        Outputs:
+            - CT: Ciphertext.
+        """
         s = self.group.random(ZR)
         e_gg_alpha_s = PP['e_gg_alpha'] ** s
         g = PP['g']
-
         policy = self.util.createPolicy(A)
         a_list = self.util.getAttributeList(policy)
-
         shares = self.util.calculateSharesDict(s, policy)
-
         C0 = e_gg_alpha_s * M
         C1 = PP['g_beta'] ** s
         C_y, C_y_pr = {}, {}
@@ -373,8 +421,7 @@ class CaCpabeAr(ABEnc):
             C_y[i] = g ** shares[i]
             C_y_pr[i] = self.group.hash(j, G1) ** shares[i]
         CT = {'C0': C0, 'C1': C1, 'Cy': C_y, 'Cy_tilde': C_y_pr, 'A': A, 'attributes': a_list}
-        Hdr = {} # AB: TODO:
-        return CT, Hdr
+        return CT
 
     def decrypt(self, PP, CT_tilde, Hdr, DSK, KEK):
         ct = CT_tilde
@@ -388,7 +435,9 @@ class CaCpabeAr(ABEnc):
         for i in pruned_list:
             j = i.getAttributeAndIndex()
             k = i.getAttribute()
-            A *= ( pair(ct['Cy'][j], DSK['D_i'][k]) / pair(DSK['D_i_dash'][k], ct['Cy_tilde'][j]) ) ** z[j]
+            KEK_i = KEK[k]['KEK_i']
+            E_k_y = Hdr[j]['E(k_y)']
+            A *= ( (pair(ct['Cy'][j], DSK['D_i'][k]) * pair(KEK_i, E_k_y) )/ pair(DSK['D_i_dash'][k], ct['Cy_tilde'][j]) ) ** z[j]
 
         return ct['C0'] / (pair(ct['C1'], DSK['D']) / A)
 
@@ -449,14 +498,15 @@ def main():
     rand_msg = group_obj.random(GT)
     print("Message: ", rand_msg)
     policy_str = '((four or three) and (three or one))'
-    CT_tilde, Hdr = ca_cpabe_ar.encrypt(PP, MPK, rand_msg, policy_str)
+    CT_tilde, Hdr = ca_cpabe_ar.encrypt(PP, MPK, MMK, rand_msg, policy_str, attributes_manager)
     print("CT: ", CT_tilde)
     user_private_keys_dict = users_private_keys_dict['U2']
     DSK = user_private_keys_dict['DSK']
     KEK = user_private_keys_dict['KEK']
     recovered_M = ca_cpabe_ar.decrypt(PP, CT_tilde, Hdr, DSK, KEK)
-    print('M: ', recovered_M)
+    print('Recovered M: ', recovered_M)
     assert rand_msg == recovered_M, "FAILED Decryption: message is incorrect"
+
 
 if __name__ == "__main__":
     main()
