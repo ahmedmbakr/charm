@@ -383,12 +383,12 @@ class CaCpabeAr(ABEnc):
                 continue
             Gi = attributes_manager.attrs_to_users_dict[attr_name_without_idx]
             node_Gi = attributes_manager.get_minimum_nodes_list_that_represent_users_list(Gi)
-
-            assert len(node_Gi) == 1, "The node_Gi list should have only one element."
+            if not attr_name_with_idx in Hdr:
+                Hdr[attr_name_with_idx] = []
             for a_node_Gi in node_Gi:
                 a_node_Gi: TreeNode = a_node_Gi
                 E_k_y = g_k_y ** (a_node_Gi.value / MMK[attr_name_without_idx])
-                Hdr[attr_name_with_idx] = {'seq': a_node_Gi.sequence_number, 'E(k_y)': E_k_y}
+                Hdr[attr_name_with_idx].append({'seq': a_node_Gi.sequence_number, 'E(k_y)': E_k_y})
         return CT, Hdr
 
     def __get_attr_name_without_idx(self, attr_name: str):
@@ -423,7 +423,21 @@ class CaCpabeAr(ABEnc):
         CT = {'C0': C0, 'C1': C1, 'Cy': C_y, 'Cy_tilde': C_y_pr, 'A': A, 'attributes': a_list}
         return CT
 
-    def decrypt(self, PP, CT_tilde, Hdr, DSK, KEK):
+    def decrypt(self, PP, CT_tilde, Hdr, DSK, KEK, user_name: str, attributes_manager: AM):
+        """
+        This function is used by any user who has sufficient, non revoked attributes to decrypted a message under a
+        specific access policy.
+        Inputs:
+            - PP: Public Parameters from the system setup algorithm.
+            - CT_tilde: Ciphertext after re-encryption by the AM.
+            - Hdr: Header message.
+            - DSK: Attributes decryption keys as in the original CP-ABE paper (abenc_bsw07.py). (shared with the user).
+            - KEK: Key Encryption Keys generated for each attribute hold by the user using the users binary tree
+            - user_name: Username who is decrypting the ciphertext.
+            - attributes_manager: AM.
+        Outputs:
+            - M: Recovered message, if the user has the decryption keys of the attributes that satisfy the policy.
+        """
         ct = CT_tilde
         policy_str = ct['A']
         policy = self.util.createPolicy(policy_str)
@@ -436,10 +450,23 @@ class CaCpabeAr(ABEnc):
             j = i.getAttributeAndIndex()
             k = i.getAttribute()
             KEK_i = KEK[k]['KEK_i']
-            E_k_y = Hdr[j]['E(k_y)']
+            Hdr_for_attr: list = Hdr[j]
+            chosen_Hdr_element = None
+            user_path = attributes_manager.get_user_path(user_name)
+            for hdr_elem in Hdr_for_attr:
+                # If hdr_ele intersect with the user path, then it is the chosen element
+                found = False
+                for user_node in user_path:
+                    if user_node.sequence_number == hdr_elem['seq']:
+                        found = True
+                if found:
+                    chosen_Hdr_element = hdr_elem
+            E_k_y = chosen_Hdr_element['E(k_y)']
             A *= ( (pair(ct['Cy'][j], DSK['D_i'][k]) * pair(KEK_i, E_k_y) )/ pair(DSK['D_i_dash'][k], ct['Cy_tilde'][j]) ) ** z[j]
 
         return ct['C0'] / (pair(ct['C1'], DSK['D']) / A)
+
+    # def revoke_attribute(self, user_name, attribute_name):
 
 def main():
     group_obj = PairingGroup('SS512')
@@ -452,11 +479,11 @@ def main():
     attributes_manager.add_attr_to_user('ONE', 'U2')
     attributes_manager.add_attr_to_user('THREE', 'U2')
     attributes_manager.add_attr_to_user('ONE', 'U3')
-    attributes_manager.add_attr_to_user('ONE', 'U4')
+    attributes_manager.add_attr_to_user('THREE', 'U4')
     attributes_manager.add_attr_to_user('ONE', 'U5')
-    attributes_manager.add_attr_to_user('ONE', 'U6')
+    attributes_manager.add_attr_to_user('TWO', 'U6')
     attributes_manager.add_attr_to_user('ONE', 'U7')
-    attributes_manager.add_attr_to_user('ONE', 'U8')
+    attributes_manager.add_attr_to_user('THREE', 'U8')
     print(attributes_manager.users_to_attrs_dict)
     attributes_manager.remove_attr_from_user('TWO', 'U2')
     print(attributes_manager.users_to_attrs_dict)
@@ -503,7 +530,7 @@ def main():
     user_private_keys_dict = users_private_keys_dict['U2']
     DSK = user_private_keys_dict['DSK']
     KEK = user_private_keys_dict['KEK']
-    recovered_M = ca_cpabe_ar.decrypt(PP, CT_tilde, Hdr, DSK, KEK)
+    recovered_M = ca_cpabe_ar.decrypt(PP, CT_tilde, Hdr, DSK, KEK, 'U2', attributes_manager)
     print('Recovered M: ', recovered_M)
     assert rand_msg == recovered_M, "FAILED Decryption: message is incorrect"
 
