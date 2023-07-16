@@ -9,22 +9,21 @@ Jiguo Li, Wei Yao, Jinguang Han, Yichen Zhang, Jian Shen (Pairing-based)
 |
 | type:           ciphertext-policy attribute-based encryption (public key)
 | setting:        Pairing
-
-:Authors:    Ahmed Bakr
-:Date:            07/2023
+|
+| Authors:        Ahmed Bakr
+| Date:           07/2023
 '''
 from charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair
 from charm.toolbox.secretutil import SecretUtil
 from charm.toolbox.ABEnc import ABEnc, Input, Output
 
 from typing import Dict, List, Tuple
+import queue
 
 # type annotations
 mk_t = {'beta':ZR, 'g_alpha':G1 }
 pp_t = { 'g':G1, 'g_beta':G1, 'g_1_over_beta':G1, 'e_gg_alpha':GT }
 
-
-import queue
 
 
 class TreeNode:
@@ -43,6 +42,10 @@ class TreeNode:
 
 
 class UsersBinaryTree:
+    """
+    A binary tree that is used to assign users to leafs in a deterministic way.
+    The tree is created and maintained by the AM.
+    """
     def __init__(self, group_obj):
         self.group = group_obj
         self.leafs_queue = queue.Queue()
@@ -203,9 +206,6 @@ class AM:
         return ret_intersection_list
 
 
-debug = False
-
-
 class CaCpabeAr(ABEnc):
     def __init__(self, group_obj):
         ABEnc.__init__(self)
@@ -346,19 +346,18 @@ class CaCpabeAr(ABEnc):
             KEK[attr] = {'seq(vj)': vj_node.sequence_number, 'kek_i': kek_i, 'KEK_i': KEK_i}
         return KEK
 
-    def encrypt(self, PP, MPK, MMK, M, A: str, attributes_manager: AM):
+    def encrypt(self, PP, MMK, M, A: str, attributes_manager: AM):
         """
         This function is executed by anyone who wants to encrypt a message with an access policy, then by AM to
         perform the re-encryption.
         Inputs:
             - PP: Public Parameters from the system setup algorithm.
-            - MPK: Manager public key represented as a dictionary.
             - MMK: Manager master key represented as a dictionary.
             - M: Message to by encrypted.
             - A: Access policy represented as a boolean expression string.
         Outputs:
-            - Hdr: Header message.
             - CT_dash: Ciphertext.
+            - Hdr: Header message.
         """
         # Local Encryption
         CT = self.local_encryption(A, M, PP)
@@ -367,14 +366,14 @@ class CaCpabeAr(ABEnc):
 
     def reencryption(self, CT, MMK, PP, attributes_manager):
         """
-        This function is performed by AM and it is second part of the encryption procedure.
+        This function is performed by AM and it is the second part of the encryption procedure.
         """
         Hdr = {}  # AB: TODO:
         g = PP['g']
         kys_dict = {}
         for attr_name_with_idx in CT['Cy_tilde']:
             # Index is appended only if the attribute is repeated more than one time to the access policy
-            k_y = self.group.random(ZR)  # AB: TODO: Note, I might need to save this value.
+            k_y = self.group.random(ZR)
             kys_dict[attr_name_with_idx] = k_y
             g_k_y = g ** k_y
             CT['Cy_tilde'][attr_name_with_idx] = CT['Cy_tilde'][attr_name_with_idx] * g_k_y
@@ -471,7 +470,7 @@ class CaCpabeAr(ABEnc):
 
     def revoke_attribute(self, revoked_user_name, attribute_name, attributes_manager: AM, PP, users_kek_i, MMK, MPK):
         """
-        This function is executed when an attribute is revoked from a user.
+        This function is executed by AM when an attribute is revoked from a user.
         Inputs:
             - revoked_user_name: The name of the revoked user.
             - attribute_name: revoked attribute name.
@@ -482,7 +481,7 @@ class CaCpabeAr(ABEnc):
             - MMK: Manager master key represented as a dictionary.
             - MPK: Manager public key represented as a dictionary.
         Outputs:
-            - updated_KEK_dict: The key is the user-name of the user whos KEK key is updated and the value is the
+            - updated_KEK_dict: The key is the user-name of the user whose KEK key is updated and the value is the
                                 updated KEK key value.
         """
         attributes_manager.remove_attr_from_user(attribute_name, revoked_user_name)
@@ -514,7 +513,6 @@ def main():
     user_names_list = ['U1', 'U2', 'U3', 'U4', 'U5', 'U6', 'U7', 'U8']
     attributes_manager.add_attr_to_user('ONE', 'U1')
     attributes_manager.add_attr_to_user('TWO', 'U1')
-    attributes_manager.add_attr_to_user('TWO', 'U2')
     attributes_manager.add_attr_to_user('ONE', 'U2')
     attributes_manager.add_attr_to_user('THREE', 'U2')
     attributes_manager.add_attr_to_user('ONE', 'U3')
@@ -523,22 +521,7 @@ def main():
     attributes_manager.add_attr_to_user('TWO', 'U6')
     attributes_manager.add_attr_to_user('ONE', 'U7')
     attributes_manager.add_attr_to_user('THREE', 'U8')
-    print(attributes_manager.users_to_attrs_dict)
-    attributes_manager.remove_attr_from_user('TWO', 'U2')
-    print(attributes_manager.users_to_attrs_dict)
-    #
-    # print(attributes_manager.users_binary_tree.print_tree())
-    # print("User Assignation to leafs dict: ", attributes_manager.get_user_assignation_to_leafs_dict())
-    #
-    # user_names_list = ['U1', 'U2', 'U3', 'U4', 'U7', 'U8']
-    # node_gi = attributes_manager.get_minimum_nodes_list_that_represent_users_list(user_names_list)
-    # print("Node(Gi): ", node_gi)
-    #
-    # user_path = attributes_manager.get_user_path('U1')
-    # print("Path(U1): ", user_path)
-    #
-    # intersect_list = AM.get_user_path_intersection_with_node_gi(user_path, node_gi)
-    # print("Node(Gi) intersection with Path(U1): ", intersect_list)
+    print("Users attributes list: ", attributes_manager.users_to_attrs_dict)
 
     ca_cpabe_ar = CaCpabeAr(group_obj)
     MK, PP = ca_cpabe_ar.system_setup()
@@ -565,13 +548,13 @@ def main():
     rand_msg = group_obj.random(GT)
     print("Message: ", rand_msg)
     policy_str = '((four or three) and (three or one))'
-    CT_tilde, Hdr = ca_cpabe_ar.encrypt(PP, MPK, MMK, rand_msg, policy_str, attributes_manager)
+    CT_tilde, Hdr = ca_cpabe_ar.encrypt(PP, MMK, rand_msg, policy_str, attributes_manager)
     print("CT: ", CT_tilde)
     user_private_keys_dict = users_private_keys_dict['U2']
     DSK = user_private_keys_dict['DSK']
     KEK = user_private_keys_dict['KEK']
     recovered_M = ca_cpabe_ar.decrypt(PP, CT_tilde, Hdr, DSK, KEK, 'U2', attributes_manager)
-    print('Recovered M: ', recovered_M)
+    print('Recovered Message: ', recovered_M)
     assert rand_msg == recovered_M, "FAILED Decryption: message is incorrect"
 
     # Revoke the attribute `THREE` from user `U2`
@@ -581,7 +564,7 @@ def main():
         users_private_keys_dict[user_name]['KEK'] = updated_users_kek_values[a_user_name]
 
     # Encrypt the same message again.
-    CT_tilde, Hdr = ca_cpabe_ar.encrypt(PP, MPK, MMK, rand_msg, policy_str, attributes_manager)
+    CT_tilde, Hdr = ca_cpabe_ar.encrypt(PP, MMK, rand_msg, policy_str, attributes_manager)
     print("CT: ", CT_tilde)
     user_private_keys_dict = users_private_keys_dict['U2']
     DSK = user_private_keys_dict['DSK']
@@ -590,7 +573,7 @@ def main():
     # one of his attributes was revoked.
     recovered_M = ca_cpabe_ar.decrypt(PP, CT_tilde, Hdr, DSK, KEK, 'U2', attributes_manager)
     print("Wrong recovered M: ", recovered_M)
-    # Uncomment the following line an error will be raised
+    # Uncomment the following line and an error will be raised
     # assert rand_msg == recovered_M, "FAILED Decryption: message is incorrect"
 
 
