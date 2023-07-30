@@ -58,14 +58,14 @@ class Attribute:
         Attribute.__validate_attribute_values_name(value_name)  # Validation
         return attr_name + '_' + value_name
 
+
 class CP_Hiding_ABE(ABEnc):
     """
     Cipher text policy hiding attribute based encryption (Section 3 in the paper).
     """
     def __init__(self, group_obj):
         ABEnc.__init__(self)
-        self.__util = SecretUtil(group_obj, verbose=False)
-        self.__group = group_obj
+        self._group = group_obj
         self.attributes_dict: Dict[str, List[str]] = None
 
     def setup(self, attributes_dict: Dict[str, List[str]]):
@@ -78,13 +78,13 @@ class CP_Hiding_ABE(ABEnc):
             - PK: Public Parameters.
         """
         self.attributes_dict = attributes_dict
-        g = self.__group.random(G1)
-        u = self.__group.random(G1)
-        v = self.__group.random(G1)
-        h = self.__group.random(G1)
-        w = self.__group.random(G1)
+        g = self._group.random(G1)
+        u = self._group.random(G1)
+        v = self._group.random(G1)
+        h = self._group.random(G1)
+        w = self._group.random(G1)
 
-        alpha = self.__group.random(ZR)
+        alpha = self._group.random(ZR)
 
         MSK = alpha
         PK = {'g': g,
@@ -107,8 +107,8 @@ class CP_Hiding_ABE(ABEnc):
         Outputs:
             - SK: User's secret key.
         """
-        self.__validate_attributes_list(attributes_list)
-        r = self.__group.random(ZR)
+        self._validate_attributes_list(attributes_list)
+        r = self._group.random(ZR)
         g = PK['g']
         w = PK['w']
         u = PK['u']
@@ -122,16 +122,16 @@ class CP_Hiding_ABE(ABEnc):
         K_3 = {}
         for full_attr_value_name in attributes_list:
             # attr_name = full_attr_value_name.split('_')[0]
-            r_i = self.__group.random(ZR)
+            r_i = self._group.random(ZR)
             K_i_2 = g ** r_i
-            hash_attr_val_in_z_p = self.__group.hash(full_attr_value_name, type=ZR)
+            hash_attr_val_in_z_p = self._group.hash(full_attr_value_name, type=ZR)
             K_i_3 = (((u ** hash_attr_val_in_z_p) * h) ** r_i) * v ** (-r)
             K_2[full_attr_value_name] = K_i_2
             K_3[full_attr_value_name] = K_i_3
         SK = {'attributes_list': attributes_list, 'K_0': K_0, 'K_1': K_1, 'K_2': K_2, 'K_3': K_3}
         return SK
 
-    def __validate_attributes_list(self, attributes_list):
+    def _validate_attributes_list(self, attributes_list):
         """
         each attribute is in the format: 'attrName_value'
         """
@@ -159,7 +159,7 @@ class CP_Hiding_ABE(ABEnc):
         v = PK['v']
         u = PK['u']
         h = PK['h']
-        s = self.__group.random(ZR)
+        s = self._group.random(ZR)
         s_n = s
         access_policy_len = len(access_policy)
         C = m * PK['e_gg_alpha'] ** s
@@ -169,21 +169,21 @@ class CP_Hiding_ABE(ABEnc):
         C_i_2 = {}
         for idx, attr_name in enumerate(access_policy):
             if idx < access_policy_len - 1:
-                s_i = self.__group.random(ZR)
+                s_i = self._group.random(ZR)
                 s_n = s_n - s_i
             else:
                 s_i = s_n
-            t_i = self.__group.random(ZR)
+            t_i = self._group.random(ZR)
             C_i_1[attr_name] = (w ** s_i) * (v ** t_i)
             C_i_3[attr_name] = g ** t_i
 
             for attr_value in self.attributes_dict[attr_name]:
                 full_attr_value_name = Attribute.get_full_attribute_value_name(attr_name, attr_value)
                 if attr_value in access_policy[attr_name]:
-                    hash_attr_val_in_z_p = self.__group.hash(full_attr_value_name, type=ZR)
+                    hash_attr_val_in_z_p = self._group.hash(full_attr_value_name, type=ZR)
                     C_i_ai_2 = ((u ** hash_attr_val_in_z_p) * h) ** (-t_i)
                 else:
-                    C_i_ai_2 = self.__group.random(G1)
+                    C_i_ai_2 = self._group.random(G1)
                 C_i_2[full_attr_value_name] = C_i_ai_2
         CT = {'C': C,
               'C_1': C_1,
@@ -204,7 +204,7 @@ class CP_Hiding_ABE(ABEnc):
             - m: The original decrypted message.
         """
         nominator = pair(CT['C_1'], SK['K_0'])
-        denominator = self.__group.init(GT, 1)
+        denominator = self._group.init(GT, 1)
         for attr_name in CT['C_i_1']:
             # Find the attribute value that exists inside both the user's key for attr_name
             found_attribute_value_full_name = None
@@ -221,6 +221,165 @@ class CP_Hiding_ABE(ABEnc):
         B = nominator / denominator
         recovered_message = CT['C'] / B
         return recovered_message
+
+
+class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
+    """
+    Cipher text policy hiding attribute based encryption (Section 3 in the paper).
+    """
+    def __init__(self, group_obj):
+        CP_Hiding_ABE.__init__(self, group_obj)
+
+    def setup(self, attributes_dict: Dict[str, List[str]]):
+        """
+        System Setup algorithm. This algorithm is performed by TA.
+        Inputs:
+            - None
+        Outputs:
+            - MSK: TA's master secret key.
+            - PK: Public Parameters.
+        """
+        self.attributes_dict = attributes_dict
+        g = self._group.random(G1)
+        u = self._group.random(G1)
+        v = self._group.random(G1)
+        h = self._group.random(G1)
+        w = self._group.random(G1)
+
+        alpha = self._group.random(ZR)
+
+        MSK = alpha
+        PK = {'g': g,
+              'e_gg': pair(g, g),
+              'u': u,
+              'h': h,
+              'w': w,
+              'v': v,
+              'e_gg_alpha': pair(g, g) ** alpha}
+        return MSK, PK
+
+    def key_gen(self, MSK, PK, attributes_list):
+        """
+        Key generation for a user based on his list of attributes. This algorithm is performed by TA.
+        Inputs:
+            - MSK: Master Secret Key of the TA.
+            - PK: Public parameters and the public key of the TA.
+            - attributes_list: List of attributes held by this user, where each attribute is in the format:
+                               'attrName_value'
+        Outputs:
+            - SK: User's secret key.
+        """
+        self._validate_attributes_list(attributes_list)
+        r = self._group.random(ZR)
+        g = PK['g']
+        w = PK['w']
+        u = PK['u']
+        h = PK['h']
+        v = PK['v']
+        alpha = MSK
+
+        K_0 = (g ** alpha) * (w ** r)
+        K_1 = g ** r
+        K_2 = {}
+        K_3 = {}
+        for full_attr_value_name in attributes_list:
+            # attr_name = full_attr_value_name.split('_')[0]
+            r_i = self._group.random(ZR)
+            K_i_2 = g ** r_i
+            hash_attr_val_in_z_p = self._group.hash(full_attr_value_name, type=ZR)
+            K_i_3 = (((u ** hash_attr_val_in_z_p) * h) ** r_i) * v ** (-r)
+            K_2[full_attr_value_name] = K_i_2
+            K_3[full_attr_value_name] = K_i_3
+        SK = {'attributes_list': attributes_list, 'K_0': K_0, 'K_1': K_1, 'K_2': K_2, 'K_3': K_3}
+        return SK
+
+    def encrypt(self, m, PK, access_policy: Dict[str, List[str]]):
+        """
+        Encrypt a message using an access policy. This function is performed by a data user who wants to encrypt his 
+        message with an access policy. They consider only and-gates in their policy.
+        Note: The access policy is hidden into the ciphertext.
+        Inputs:
+            - PK: Public parameters and the public key of the TA.
+            - m: Message to be encrypted in G_T.
+            - access_policy: Access policy that will be used to encrypt the message. It has to be and gated policy,
+                             which means that each attribute can have only one value.
+        Outputs:
+            - CT: Cipher text. 
+        """
+        g = PK['g']
+        w = PK['w']
+        v = PK['v']
+        u = PK['u']
+        h = PK['h']
+        s = self._group.random(ZR)
+        s_n = s
+        access_policy_len = len(access_policy)
+        C = m * PK['e_gg_alpha'] ** s
+        C_1 = g ** s
+        C_i_1 = {}
+        C_i_3 = {}
+        C_i_2 = {}
+        for idx, attr_name in enumerate(access_policy):
+            if idx < access_policy_len - 1:
+                s_i = self._group.random(ZR)
+                s_n = s_n - s_i
+            else:
+                s_i = s_n
+            t_i = self._group.random(ZR)
+            C_i_1[attr_name] = (w ** s_i) * (v ** t_i)
+            C_i_3[attr_name] = g ** t_i
+
+            for attr_value in self.attributes_dict[attr_name]:
+                full_attr_value_name = Attribute.get_full_attribute_value_name(attr_name, attr_value)
+                if attr_value in access_policy[attr_name]:
+                    hash_attr_val_in_z_p = self._group.hash(full_attr_value_name, type=ZR)
+                    C_i_ai_2 = ((u ** hash_attr_val_in_z_p) * h) ** (-t_i)
+                else:
+                    C_i_ai_2 = self._group.random(G1)
+                C_i_2[full_attr_value_name] = C_i_ai_2
+        CT = {'C': C,
+              'C_1': C_1,
+              'C_i_1': C_i_1,
+              'C_i_3': C_i_3,
+              'C_i_ai_2': C_i_2}
+        return CT
+
+    def decrypt(self, CT, PK, SK):
+        """
+        Decrypt a cipher text. This algorithm is performed by a data user who has the required attributes to decipher
+        the ciphertext that was encrypted using an access policy.
+        Inputs:
+            - CT: Cipher text.
+            - PK: Public parameters and the public key of the TA.
+            - SK: User's secret key.
+        Outputs:
+            - m: The original decrypted message.
+        """
+        nominator = pair(CT['C_1'], SK['K_0'])
+        denominator = self._group.init(GT, 1)
+        for attr_name in CT['C_i_1']:
+            # Find the attribute value that exists inside both the user's key for attr_name
+            found_attribute_value_full_name = None
+            for attr_value_full_name in SK['K_2']:
+                if attr_value_full_name.find(attr_name) == 0:
+                    found_attribute_value_full_name = attr_value_full_name
+            if not found_attribute_value_full_name:
+                return False # The user does not have the necessary attributes to decrypt
+
+            denominator = (denominator * pair(CT['C_i_1'][attr_name], SK['K_1']) *
+                           pair(CT['C_i_ai_2'][found_attribute_value_full_name],
+                                SK['K_2'][found_attribute_value_full_name]) *
+                           pair(CT['C_i_3'][attr_name], SK['K_3'][found_attribute_value_full_name]))
+        B = nominator / denominator
+        recovered_message = CT['C'] / B
+        return recovered_message
+
+    def trace(self, SK_suspected):
+        """
+        Trace function is executed by the auditor. The auditor checks the suspected SK and determines who is misbehaving
+        : the user who owns SK or the TA.
+        """
+        pass
 
 
 def main():
