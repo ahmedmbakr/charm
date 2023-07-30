@@ -13,6 +13,7 @@ Jiguo Li, Yichen Zhang, Jianting Ning, Xinyi Huang, Geong Sen Poh, Debang Wang (
 | Authors:        Ahmed Bakr
 | Date:           07/2023
 '''
+
 from charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair
 from charm.toolbox.secretutil import SecretUtil
 from charm.toolbox.ABEnc import ABEnc, Input, Output
@@ -222,10 +223,9 @@ class CP_Hiding_ABE(ABEnc):
         recovered_message = CT['C'] / B
         return recovered_message
 
-
 class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
     """
-    Cipher text policy hiding attribute based encryption (Section 3 in the paper).
+    Cipher text policy hiding attribute based encryption (Section 4 in the paper).
     """
     def __init__(self, group_obj):
         CP_Hiding_ABE.__init__(self, group_obj)
@@ -247,23 +247,77 @@ class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
         w = self._group.random(G1)
 
         alpha = self._group.random(ZR)
+        x = self._group.random(ZR)
+        y = self._group.random(ZR)
 
-        MSK = alpha
+        X = g ** x
+        Y = g ** y
+
+        MSK = {
+            'alpha': alpha,
+            'x': x,
+            'y': y
+        }
         PK = {'g': g,
               'e_gg': pair(g, g),
               'u': u,
               'h': h,
               'w': w,
               'v': v,
-              'e_gg_alpha': pair(g, g) ** alpha}
+              'e_gg_alpha': pair(g, g) ** alpha,
+              'X': X,
+              'Y': Y
+              }
         return MSK, PK
 
-    def key_gen(self, MSK, PK, attributes_list):
+    def key_gen(self, MSK, PK, ID, attributes_list):
         """
-        Key generation for a user based on his list of attributes. This algorithm is performed by TA.
+        Key generation for a user based on his list of attributes. This algorithm is performed by TA and the user.
+        Part of the key generation is executed as an interaction between the user and the TA, as the user generates
+        a random number (k) that he does not share with the TA. However, he shares with it w**k, and proves knowledge of
+        (k) to TA using any ZKP algorithm.
         Inputs:
             - MSK: Master Secret Key of the TA.
             - PK: Public parameters and the public key of the TA.
+            - ID: User's unique identifier.
+            - attributes_list: List of attributes held by this user, where each attribute is in the format:
+                               'attrName_value'
+        Outputs:
+            - SK: User's secret key.
+        """
+        w = PK['w']
+
+        # The part executed by the user
+        k = self._group.random(ZR)  # Select a secret KFN (Key Family Number).
+        R = w ** k
+
+        # User is going to send R to the TA and prove knowledge of k using Shnorr's ZKP.
+        zkp_prover = ShnorrInteractiveZKP.Prover(k, self._group)  # The user.
+        zkp_verifier = ShnorrInteractiveZKP.Verifier(self._group)  # The TA.
+        pk = {'g': w}  # Work around to user (w) as the group point instead of (g)
+        u = zkp_prover.create_prover_commitments(pk)
+        c = zkp_verifier.create_verifier_challenge()
+        z = zkp_prover.create_proof(c)
+        assert zkp_verifier.is_proof_verified(z, pk, u, R), \
+            "User failed to proof knowledge of (k) that is used to calculate R"
+
+        SK = self.key_gen_TA(MSK, PK, ID, R, attributes_list)
+
+        # The user gets the SK and adds his secret KFN to it.
+        SK['k'] = k
+        return SK
+
+    def key_gen_TA(self, MSK, PK, ID, R, attributes_list):
+        """
+        Key generation for a user based on his list of attributes. This algorithm is performed by TA and the user.
+        Part of the key generation is executed as an interaction between the user and the TA, as the user generates
+        a random number (k) that he does not share with the TA. However, he shares with it w**k, and proves knowledge of
+        (k) to TA using any ZKP algorithm.
+        Inputs:
+            - MSK: Master Secret Key of the TA.
+            - PK: Public parameters and the public key of the TA.
+            - ID: User's unique identifier.
+            - R: w ** k, where (w) is a public point on the curve, and (k) is the secret KFN selected by the user.
             - attributes_list: List of attributes held by this user, where each attribute is in the format:
                                'attrName_value'
         Outputs:
@@ -276,21 +330,29 @@ class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
         u = PK['u']
         h = PK['h']
         v = PK['v']
-        alpha = MSK
+        alpha = MSK['alpha']
+        x = MSK['x']
+        y = MSK['y']
 
-        K_0 = (g ** alpha) * (w ** r)
+        d = self._group.random(ZR)  # TODO: AB: If (x + ID + y * d) mod p = 0, then choose another d
+
+        K_0 = (g ** (alpha / (x + ID + y * d))) * (R ** r)
         K_1 = g ** r
-        K_2 = {}
-        K_3 = {}
+        K_2 = g ** (x * r)
+        K_3 = g ** (y * r)
+        T1 = ID
+        T3 = d
+        K_i_2 = {}
+        K_i_3 = {}
         for full_attr_value_name in attributes_list:
             # attr_name = full_attr_value_name.split('_')[0]
             r_i = self._group.random(ZR)
-            K_i_2 = g ** r_i
+            K_i_2[full_attr_value_name] = g ** r_i
             hash_attr_val_in_z_p = self._group.hash(full_attr_value_name, type=ZR)
-            K_i_3 = (((u ** hash_attr_val_in_z_p) * h) ** r_i) * v ** (-r)
-            K_2[full_attr_value_name] = K_i_2
-            K_3[full_attr_value_name] = K_i_3
-        SK = {'attributes_list': attributes_list, 'K_0': K_0, 'K_1': K_1, 'K_2': K_2, 'K_3': K_3}
+            K_i_3[full_attr_value_name] = (((u ** hash_attr_val_in_z_p) * h) ** r_i) * v ** (-r * (x + ID + y * d))
+
+        SK = {'attributes_list': attributes_list, 'K_0': K_0, 'K_1': K_1, 'K_2': K_2, 'K_3': K_3, 'K_i_2': K_i_2,
+              'K_i_3': K_i_3, 'T1': T1, 'T3': T3}
         return SK
 
     def encrypt(self, m, PK, access_policy: Dict[str, List[str]]):
@@ -311,11 +373,15 @@ class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
         v = PK['v']
         u = PK['u']
         h = PK['h']
+        X = PK['X']
+        Y = PK['Y']
         s = self._group.random(ZR)
         s_n = s
         access_policy_len = len(access_policy)
         C = m * PK['e_gg_alpha'] ** s
         C_1 = g ** s
+        C_2 = X ** s
+        C_3 = Y ** s
         C_i_1 = {}
         C_i_3 = {}
         C_i_2 = {}
@@ -339,6 +405,8 @@ class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
                 C_i_2[full_attr_value_name] = C_i_ai_2
         CT = {'C': C,
               'C_1': C_1,
+              'C_2': C_2,
+              'C_3': C_3,
               'C_i_1': C_i_1,
               'C_i_3': C_i_3,
               'C_i_ai_2': C_i_2}
@@ -355,21 +423,21 @@ class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
         Outputs:
             - m: The original decrypted message.
         """
-        nominator = pair(CT['C_1'], SK['K_0'])
+        nominator = pair((CT['C_1'] ** SK['T1']) * CT['C_2'] * (CT['C_3'] ** SK['T3']), SK['K_0'])
         denominator = self._group.init(GT, 1)
         for attr_name in CT['C_i_1']:
             # Find the attribute value that exists inside both the user's key for attr_name
             found_attribute_value_full_name = None
-            for attr_value_full_name in SK['K_2']:
+            for attr_value_full_name in SK['K_i_2']:
                 if attr_value_full_name.find(attr_name) == 0:
                     found_attribute_value_full_name = attr_value_full_name
             if not found_attribute_value_full_name:
                 return False # The user does not have the necessary attributes to decrypt
 
-            denominator = (denominator * pair(CT['C_i_1'][attr_name], SK['K_1']) *
+            denominator = (denominator * ((pair(CT['C_i_1'][attr_name], (SK['K_1'] ** SK['T1']) * SK['K_2'] * (SK['K_3'] ** SK['T3'])) *
                            pair(CT['C_i_ai_2'][found_attribute_value_full_name],
-                                SK['K_2'][found_attribute_value_full_name]) *
-                           pair(CT['C_i_3'][attr_name], SK['K_3'][found_attribute_value_full_name]))
+                                SK['K_i_2'][found_attribute_value_full_name]) *
+                           pair(CT['C_i_3'][attr_name], SK['K_i_3'][found_attribute_value_full_name])) ** SK['k']))
         B = nominator / denominator
         recovered_message = CT['C'] / B
         return recovered_message
@@ -382,44 +450,137 @@ class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
         pass
 
 
+class ShnorrInteractiveZKP():
+    """
+    Shnorr's Interactive ZKP
+    """
+    class Prover:
+        def __init__(self, secret_x, groupObj):
+            self.__r = None
+            self.group = groupObj
+            self.__x = secret_x
+
+        def create_prover_commitments(self, pk):
+            """
+            1) This function is executed by the prover to send a random value to the verifier
+            """
+            self.__r = self.group.random()
+            u = (pk['g'] ** self.__r)
+            return u
+
+        def create_proof(self, c):
+            """
+            3) This function is executed by the prover after he received the challenge value (c) from the verifier
+            """
+            z = self.__r + c * self.__x
+            return z  # proof
+
+    class Verifier:
+
+        def __init__(self, groupObj):
+            self.group = groupObj
+
+        def create_verifier_challenge(self):
+            """
+            2) This function is executed by the verifier after he had received the value u from the prover to send a challenge value to the prover.
+            """
+            self.c = self.group.random()
+            return self.c
+
+        def is_proof_verified(self, z, pk, u, h):
+            """
+            4) This function is executed by the verifier to verify the authenticity of the proof sent by the prover
+            z: Created by the prover in create_proof function
+            u: Created by the prover in create_prover_commitments function
+            h: g^x, where x is the secret key of the prover that he wants to prove that he knows it.
+            """
+            if (pk['g'] ** z) == u * h ** self.c:
+                return True
+            return False
+
+
 def main():
+    # CP_policy_hiding_ABE_test()
+    CP_policy_hiding_with_accountability_test()
+
+
+def CP_policy_hiding_ABE_test():
     attr1_values = ['val1', 'val2', 'val3']
     attr2_values = ['val1', 'val4']
-
     attributes_dict = {
-                        'attr1': attr1_values,
-                        'attr2': attr2_values
-                    }
-
+        'attr1': attr1_values,
+        'attr2': attr2_values
+    }
     user1_attributes = ['attr1_val2', 'attr2_val4']
     user2_attributes = ['attr1_val2', 'attr2_val1']
-
     # The access policy that will be used to encrypt the message
     access_policy = {'attr1': ['val1', 'val2'],  # Set of attributes allowed for 'attr1' in the access policy.
                      'attr2': ['val4']  # Set of attributes allowed for 'attr2' in the access policy.
-                    }
-
+                     }
     attr1 = Attribute('attr1', attr1_values)
     attr2 = Attribute('attr2', attr2_values)
-
     attr1_values = attr1.get_attribute_values_full_name()
     attr2_values = attr2.get_attribute_values_full_name()
-
     print("attribute 1 full values names: ", attr1_values)
     print("attribute 2 full values names: ", attr2_values)
-
     group_obj = PairingGroup('SS512')
     cp_hiding_ABE = CP_Hiding_ABE(group_obj)
     MSK, PK = cp_hiding_ABE.setup(attributes_dict)  # TA's MSK, PK
     print("MSK: ", MSK)
     print("PK: ", PK)
-
     user1_SK = cp_hiding_ABE.key_gen(MSK, PK, user1_attributes)
     print('user1 SK: ', user1_SK)
-
     user2_SK = cp_hiding_ABE.key_gen(MSK, PK, user2_attributes)
     print('user2 SK: ', user1_SK)
+    rand_msg = group_obj.random(GT)
+    CT = cp_hiding_ABE.encrypt(rand_msg, PK, access_policy)
+    print("CT: ", CT)
+    recovered_message = cp_hiding_ABE.decrypt(CT, PK, user1_SK)
+    print("recovered message: ", recovered_message)
+    # No error is generated since user 1's attributes matches the access policy embedded inside the CT.
+    assert recovered_message == rand_msg, "Random message does not match the recovered message"
+    # User 2 tries to decrypt CT.
+    recovered_message = cp_hiding_ABE.decrypt(CT, PK, user2_SK)
+    print("recovered message: ", recovered_message)
+    # An error is generated since user 2 does not have the required attributes to decrypt CT.
+    # assert recovered_message == rand_msg, "Random message does not match the recovered message"  # Uncomment to raise the error.
 
+
+def CP_policy_hiding_with_accountability_test():
+    attr1_values = ['val1', 'val2', 'val3']
+    attr2_values = ['val1', 'val4']
+    attributes_dict = {
+        'attr1': attr1_values,
+        'attr2': attr2_values
+    }
+    user1_attributes = ['attr1_val2', 'attr2_val4']
+    user2_attributes = ['attr1_val2', 'attr2_val1']
+
+    user1_ID = 123
+    user2_ID = 57534
+    # The access policy that will be used to encrypt the message
+    access_policy = {'attr1': ['val1', 'val2'],  # Set of attributes allowed for 'attr1' in the access policy.
+                     'attr2': ['val4']  # Set of attributes allowed for 'attr2' in the access policy.
+                     }
+    attr1 = Attribute('attr1', attr1_values)
+    attr2 = Attribute('attr2', attr2_values)
+    attr1_values = attr1.get_attribute_values_full_name()
+    attr2_values = attr2.get_attribute_values_full_name()
+    print("attribute 1 full values names: ", attr1_values)
+    print("attribute 2 full values names: ", attr2_values)
+    group_obj = PairingGroup('SS512')
+    cp_hiding_ABE = CP_Hiding_Accountability_ABE(group_obj)
+    MSK, PK = cp_hiding_ABE.setup(attributes_dict)  # TA's MSK, PK
+    print("MSK: ", MSK)
+    print("PK: ", PK)
+
+    user1_ID = group_obj.init(ZR, user1_ID)
+    user2_ID = group_obj.init(ZR, user2_ID)
+
+    user1_SK = cp_hiding_ABE.key_gen(MSK, PK, user1_ID, user1_attributes)
+    print('user1 SK: ', user1_SK)
+    user2_SK = cp_hiding_ABE.key_gen(MSK, PK, user2_ID, user2_attributes)
+    print('user2 SK: ', user1_SK)
     rand_msg = group_obj.random(GT)
     CT = cp_hiding_ABE.encrypt(rand_msg, PK, access_policy)
     print("CT: ", CT)
