@@ -4,22 +4,24 @@ Jiguo Li, Yichen Zhang, Jianting Ning, Xinyi Huang, Geong Sen Poh, Debang Wang (
 | From: "Attribute Based Encryption with Privacy Protection and Accountability for CloudIoT".
 | Published in: 2020
 | Available from: https://ieeexplore.ieee.org/abstract/document/9003205
-| Notes:
+| Notes: The paper presents two schemes. The first one is for CP policy hiding in Section 3, which is implemented in
+         the class 'CP_Hiding_ABE' and tested in the function 'CP_policy_hiding_ABE_test'.
+          The second one is CP policy hiding with accountability under the white box
+          assumption, which is implemented in the class 'CP_Hiding_Accountability_ABE' and tested in the function
+          'CP_policy_hiding_with_accountability_test'
 | Security Assumption:
 |
 | type:           ciphertext-policy attribute-based encryption (public key)
 | setting:        Pairing
 |
 | Authors:        Ahmed Bakr
-| Date:           07/2023
+| Date:           08/2023
 '''
 
 from charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair
-from charm.toolbox.secretutil import SecretUtil
-from charm.toolbox.ABEnc import ABEnc, Input, Output
+from charm.toolbox.ABEnc import ABEnc
 
-from typing import Dict, List, Tuple
-import queue
+from typing import Dict, List
 
 
 class Attribute:
@@ -229,6 +231,8 @@ class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
     """
     def __init__(self, group_obj):
         CP_Hiding_ABE.__init__(self, group_obj)
+        self._user_ID_to_w_pow_k_dict = {}  # Updated inside the key generation function to map the user ID to his
+        # associated R = w ** k.
 
     def setup(self, attributes_dict: Dict[str, List[str]]):
         """
@@ -351,6 +355,8 @@ class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
             hash_attr_val_in_z_p = self._group.hash(full_attr_value_name, type=ZR)
             K_i_3[full_attr_value_name] = (((u ** hash_attr_val_in_z_p) * h) ** r_i) * v ** (-r * (x + ID + y * d))
 
+        self._user_ID_to_w_pow_k_dict[T1] = R
+
         SK = {'attributes_list': attributes_list, 'K_0': K_0, 'K_1': K_1, 'K_2': K_2, 'K_3': K_3, 'K_i_2': K_i_2,
               'K_i_3': K_i_3, 'T1': T1, 'T3': T3}
         return SK
@@ -442,12 +448,41 @@ class CP_Hiding_Accountability_ABE(CP_Hiding_ABE):
         recovered_message = CT['C'] / B
         return recovered_message
 
-    def trace(self, SK_suspected):
+    def trace(self, SK_suspected, authentic_user_IDs_list, PK):
         """
         Trace function is executed by the auditor. The auditor checks the suspected SK and determines who is misbehaving
-        : the user who owns SK or the TA.
+        : the user who owns SK or the TA. If this function is called, it means that either the user or the TA is
+          misbehaving. The trigger how this function is triggered and how the malicious activity is detected is out of
+          this paper's scope.
+        Inputs:
+            - SK_suspected: Secret key of the suspected user under the white box model, which means that it has access
+                            to the full secret key of the user.
+            - authentic_user_IDs_list: A list of the authentic user IDs issued by a trusted third party outside the
+                                       system.
+            - PK: Public parameters and the public key of the TA.
+        Outputs:
+            - {'user': True/False,
+               'TA': True/False} ; Only one of them will be true and the other will be false.
         """
-        pass
+        assert self._is_SK_well_formed(SK_suspected), "SK is not well formed."
+        user_id = SK_suspected['T1']
+        if user_id not in authentic_user_IDs_list:
+            return {'user': False, 'TA': True}  # The TA issued a fake ID for a fake or not illegible user.
+        w_pow_k_ID = self._user_ID_to_w_pow_k_dict[user_id]
+        k = SK_suspected['k']
+        w = PK['w']
+        if w**k != w_pow_k_ID:
+            return {'user': True, 'TA': False}  # User is misbehaving and gave his keys to someone else.
+        else:
+            return {'user': False, 'TA': True}  # The TA is misbehaving.
+
+    def _is_SK_well_formed(self, SK):
+        search_keys = ['attributes_list', 'K_0', 'K_1', 'K_2', 'K_3', 'K_i_2', 'K_i_3', 'T1', 'T3', 'k']
+        for a_search_key in search_keys:
+            if a_search_key not in SK:
+                return False
+        return True
+
 
 
 class ShnorrInteractiveZKP():
@@ -500,11 +535,12 @@ class ShnorrInteractiveZKP():
 
 
 def main():
-    # CP_policy_hiding_ABE_test()
+    CP_policy_hiding_ABE_test()
     CP_policy_hiding_with_accountability_test()
 
 
 def CP_policy_hiding_ABE_test():
+    print("************************************* CP policy hiding ABE test *******************************************")
     attr1_values = ['val1', 'val2', 'val3']
     attr2_values = ['val1', 'val4']
     attributes_dict = {
@@ -544,9 +580,11 @@ def CP_policy_hiding_ABE_test():
     print("recovered message: ", recovered_message)
     # An error is generated since user 2 does not have the required attributes to decrypt CT.
     # assert recovered_message == rand_msg, "Random message does not match the recovered message"  # Uncomment to raise the error.
+    print("***********************************************************************************************************")
 
 
 def CP_policy_hiding_with_accountability_test():
+    print("*************************** CP policy hiding ABE with accountability test *********************************")
     attr1_values = ['val1', 'val2', 'val3']
     attr2_values = ['val1', 'val4']
     attributes_dict = {
@@ -594,6 +632,13 @@ def CP_policy_hiding_with_accountability_test():
     print("recovered message: ", recovered_message)
     # An error is generated since user 2 does not have the required attributes to decrypt CT.
     # assert recovered_message == rand_msg, "Random message does not match the recovered message"  # Uncomment to raise the error.
+
+    authentic_user_IDs_list = [123]
+    # User 2's ID is not in the authentic list, which means that his ID is fabricated and this malicious action is
+    # traced to the TA.
+    misbehaving_result = cp_hiding_ABE.trace(user2_SK, authentic_user_IDs_list, PK)
+    print("Misbehaving result for user2 SK: ", misbehaving_result)
+    print("***********************************************************************************************************")
 
 
 if __name__ == "__main__":
