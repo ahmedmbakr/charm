@@ -564,7 +564,7 @@ class MABERA(ABEncMultiAuth):
             C4_x = CT['C4'][attr_name_with_idx]
             D_x = DSK_i['D_u_dict'][attr_name_without_idx]
             D_dash_x = DSK_i['D_u_dash_dict'][attr_name_without_idx]
-            nominator = (C1_x * pair(D_x, C2_x ** gamma) * pair(self.group.hash(UID, G1) ** gamma, C3_x)
+            nominator = ((C1_x ** gamma) * pair(D_x, C2_x ** gamma) * pair(self.group.hash(UID, G1) ** gamma, C3_x)
                          * pair(D_dash_x, C4_x))
             denominator = pair(KEK_i_u, E_k_y)
             B *= (nominator / denominator) ** ((1/gamma) * coefficients[attr_name_with_idx])
