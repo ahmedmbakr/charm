@@ -14,6 +14,7 @@ Ahmed Bakr, Ahmad Alsharif, Mahmoud Nabil (Pairing-based)
 | Date:           09/2023
 '''
 from charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair
+# from charm.toolbox.pairinggroup import *
 from charm.toolbox.secretutil import SecretUtil
 from charm.toolbox.ABEnc import ABEnc, Input, Output
 from charm.toolbox.ABEncMultiAuth import ABEncMultiAuth
@@ -359,7 +360,7 @@ class MABERA(ABEncMultiAuth):
             attr_name_without_AI_name = attr_name.split('@')[0]
             l_u = l_u_dict[attr_name_without_AI_name]
             D_u = ((g ** alpha_theta) * (self.group.hash(UID, G1) ** beta_theta) *
-                   (self.group.hash(UID, G1) ** (r_u * l_u)))
+                   (self.group.hash(attr_name, G1) ** (r_u * l_u)))
             D_u_dash = g_gamma ** (r_u * l_u)
             kek_theta_u = MPK_m[attr_name] ** r_u
             kek_dict[attr_name] = kek_theta_u
@@ -432,36 +433,20 @@ class MABERA(ABEncMultiAuth):
             KEK_attr = {'seq(vj)': vj_node.sequence_number, 'kek_u': kek_u, 'KEK_u': KEK_u}
             return KEK_attr
 
-    def encrypt(self, PP, MMK, M, A: str, attributes_manager: AM):
-        """
-        This function is executed by anyone who wants to encrypt a message with an access policy, then by AM to
-        perform the re-encryption.
-        Inputs:
-            - PP: Public Parameters from the system setup algorithm.
-            - MMK: Manager master key represented as a dictionary.
-            - M: Message to by encrypted.
-            - A: Access policy represented as a boolean expression string.
-        Outputs:
-            - CT_dash: Ciphertext.
-            - Hdr: Header message.
-        """
-        # Local Encryption
-        CT = self.local_encryption(A, M, PP)
-        CT, Hdr = self.reencryption(CT, MMK, PP, attributes_manager)
-        return CT, Hdr
-
-    def local_encryption(self, A, M, PKs, PP):
+    def local_encryption(self, A, M, PKs, l_u_dict, PP):
         """
         This function is executed by anyone who wants to encrypt a message with an access policy.
         Inputs:
             - A: Access policy represented as a boolean expression string.
             - M: Message to by encrypted.
             - PKs: The public keys of the relevant attribute authorities, as dict from authority name to public key.
+            - l_u_dict: Part of the secret key of the attribute issuer who is encrypting the message. TODO: Write it in another way to make the scheme generic, as it is now efficient for used in the trading system only. The solution is that this should be a standalone dictionary that is not part of the AI secret key and contains a secret number for each attribute used in the access policy he uses to encrypt the message.
             - PP: Public Parameters from the system setup algorithm.
         Outputs:
             - CT: Ciphertext.
+            - K_dash: Given to each AM for the re-encryption process.
         """
-        s = self.group.random()  # secret to be shared
+        s = self.group.random(ZR)  # secret to be shared
         w = self.group.init(ZR, 0)  # 0 to be shared
 
         policy = self.util.createPolicy(A)
@@ -472,18 +457,20 @@ class MABERA(ABEncMultiAuth):
         e_gg = PP['e_gg']
         C0 = M * (e_gg ** s)
         C1, C2, C3, C4 = {}, {}, {}, {}
+        K_dash = {}
         for u in attribute_list:
             attribute_name, auth, _ = self.unpack_attribute(u)
             attr = "%s@%s" % (attribute_name, auth)
             rx = self.group.random()
             kx = self.group.random()
             g_kx = PP['g'] ** kx
-            C1[u] = PP['egg'] ** secret_shares[u] * PKs[auth]['e_gg_alpha_theta'] ** rx
+            C1[u] = (PP['e_gg'] ** secret_shares[u]) * (PKs[auth]['e_gg_alpha_theta'] ** rx)
             C2[u] = PP['g'] ** (-rx)
             C3[u] = PKs[auth]['g_beta_theta'] ** rx * PP['g'] ** zero_shares[u]
             C4[u] = (self.group.hash(attr, G1) ** rx) * g_kx
-
-        return {'policy': A, 'C0': C0, 'C1': C1, 'C2': C2, 'C3': C3, 'C4': C4}
+            K_dash[u] = g_kx ** l_u_dict[attribute_name]
+            CT = {'policy': A, 'C0': C0, 'C1': C1, 'C2': C2, 'C3': C3, 'C4': C4}
+        return CT, K_dash
 
     def unpack_attribute(self, attribute):
         """
@@ -502,20 +489,12 @@ class MABERA(ABEncMultiAuth):
         assert len(parts) > 1, "No @ char in [attribute@authority] name"
         return parts[0], parts[1], None if len(parts) < 3 else parts[2]
 
-    def reencryption(self, CT, MMK, PP, attributes_manager):
+    def reencryption(self, K_dash, MMK, attributes_manager):
         """
         This function is performed by AM and it is the second part of the encryption procedure.
         """
-        Hdr = {}  # AB: TODO:
-        g = PP['g']
-        kys_dict = {}
-        for attr_name_with_idx in CT['Cy_tilde']:
-            # Index is appended only if the attribute is repeated more than one time to the access policy
-            k_y = self.group.random(ZR)
-            kys_dict[attr_name_with_idx] = k_y
-            g_k_y = g ** k_y
-            CT['Cy_tilde'][attr_name_with_idx] = CT['Cy_tilde'][attr_name_with_idx] * g_k_y
-
+        Hdr = {}
+        for attr_name_with_idx in K_dash:
             attr_name_without_idx = self.__get_attr_name_without_idx(attr_name_with_idx)
             if not attr_name_without_idx in attributes_manager.attrs_to_users_dict:
                 # Attribute manager is not responsible for this attribute
@@ -527,15 +506,71 @@ class MABERA(ABEncMultiAuth):
                 Hdr[attr_name_with_idx] = []
             for a_node_Gi in node_Gi:
                 a_node_Gi: TreeNode = a_node_Gi
-                E_k_y = g_k_y ** (a_node_Gi.value / MMK[attr_name_without_idx])
+                E_k_y = K_dash[attr_name_without_idx] ** (a_node_Gi.value / MMK[attr_name_without_idx])
                 Hdr[attr_name_with_idx].append({'seq': a_node_Gi.sequence_number, 'E(k_y)': E_k_y})
-        return CT, Hdr
+        return Hdr
 
     def __get_attr_name_without_idx(self, attr_name: str):
         if attr_name.find('_') == -1:
             return attr_name
         val = attr_name.split('_')
         return val[0]
+
+    def decrypt(self, PP, CT, Hdr, user_secret_keys, UID, user_name: str, attributes_manager: AM):
+        """
+        This function is used by any user who has sufficient, non revoked attributes to decrypted a message under a
+        specific access policy.
+        Inputs:
+            - PP: Public Parameters from the system setup algorithm.
+            - CT_tilde: Ciphertext after re-encryption by the AM.
+            - Hdr: Header message.
+            - user_secret_keys: Contains user secret keys DSK (from AI), KEK (from AM), gamma (Privately preserved value)
+            - UID: User ID.
+            - user_name: Username who is decrypting the ciphertext.
+            - attributes_manager: AM.
+        Outputs:
+            - M: Recovered message, if the user has the decryption keys of the attributes that satisfy the policy.
+        """
+        DSK_i = user_secret_keys['DSK_i']
+        KEK_i = user_secret_keys['KEK_i']
+        gamma = user_secret_keys['gamma']
+        policy = self.util.createPolicy(CT['policy'])
+        coefficients = self.util.getCoefficients(policy)
+        pruned_list = self.util.prune(policy, DSK_i['D_u_dict'].keys())
+        if not pruned_list:
+            raise Exception("You don't have the required attributes for decryption!")
+
+        B = self.group.init(GT, 1)
+
+        for attr_node in pruned_list:
+            attr_name_with_idx = attr_node.getAttributeAndIndex()
+            attr_name_without_idx = attr_node.getAttribute()
+            KEK_i_u = KEK_i[attr_name_without_idx]['KEK_u']
+            Hdr_for_attr: list = Hdr[attr_name_with_idx]
+            chosen_Hdr_element = None
+            user_path = attributes_manager.get_user_path(user_name)
+            for hdr_elem in Hdr_for_attr:
+                # If hdr_ele intersect with the user path, then it is the chosen element
+                found = False
+                for user_node in user_path:
+                    if user_node.sequence_number == hdr_elem['seq']:
+                        found = True
+                if found:
+                    chosen_Hdr_element = hdr_elem
+            E_k_y = chosen_Hdr_element['E(k_y)']
+            C1_x = CT['C1'][attr_name_with_idx]
+            C2_x = CT['C2'][attr_name_with_idx]
+            C3_x = CT['C3'][attr_name_with_idx]
+            C4_x = CT['C4'][attr_name_with_idx]
+            D_x = DSK_i['D_u_dict'][attr_name_without_idx]
+            D_dash_x = DSK_i['D_u_dash_dict'][attr_name_without_idx]
+            nominator = (C1_x * pair(D_x, C2_x ** gamma) * pair(self.group.hash(UID, G1) ** gamma, C3_x)
+                         * pair(D_dash_x, C4_x))
+            denominator = pair(KEK_i_u, E_k_y)
+            B *= (nominator / denominator) ** ((1/gamma) * coefficients[attr_name_with_idx])
+            # B *= ((pair(CT['Cy'][attr_name_with_idx], DSK['D_i'][attr_name_without_idx]) * pair(KEK_i, E_k_y)) / pair(DSK['D_i_dash'][attr_name_without_idx], CT['Cy_tilde'][attr_name_with_idx])) ** z[attr_name_with_idx]
+
+        return CT['C0'] / B
 
 
 def main():
@@ -650,10 +685,28 @@ def main():
         print("DSK for user {}: {}".format(a_user_name, users_secret_keys[a_user_name]))
 
     policy = "ONE@TA1 and TWO@TA1"
-    M = "This is the message"
+    M = group_obj.random(GT)
     attributes_issuer_pks = get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
-    CT = mabera.local_encryption(policy, M, attributes_issuer_pks, PP)
+    l_u_dict = attr_authorities_pk_sk_dict['TA1']['SK_theta']['l_u_dict'] # Consider TA1 is performing the encryption.
+    CT, K_dash = mabera.local_encryption(policy, M, attributes_issuer_pks, l_u_dict, PP)
     print("CT: ", CT)
+    print("K_dash: ", K_dash)
+
+    Hdr_m_dict = {}
+    for an_AM_name in attribute_managers_dict:
+        am = attribute_managers_dict[an_AM_name]
+        MMK_m = attr_managers_pk_sk_dict[an_AM_name]['MMK_m']
+        Hdr_m_dict[an_AM_name] = mabera.reencryption(K_dash, MMK_m, am)
+    print("Hdr: ", Hdr_m_dict)
+
+    # U1 will try to decrypt
+    a_user_cfg = users_cfg_dict['U1']
+    associated_AM_name = a_user_cfg['associated_AM']
+    am = attribute_managers_dict[associated_AM_name]
+    dec_msg = mabera.decrypt(PP, CT, Hdr_m_dict[associated_AM_name], users_secret_keys['U1'], 'U1', 'U1', am)
+    print("Decrypted Message: ", dec_msg)
+    assert M == dec_msg, "FAILED Decryption: message is incorrect"
+    
     # UMK = {} # A value stored privately by TA for each user.
     # users_private_keys_dict = {}
     # users_kek_i = {} # Held privately by AM
