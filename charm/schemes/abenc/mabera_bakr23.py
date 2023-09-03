@@ -433,15 +433,18 @@ class MABERA(ABEncMultiAuth):
             KEK_attr = {'seq(vj)': vj_node.sequence_number, 'kek_u': kek_u, 'KEK_u': KEK_u}
             return KEK_attr
 
-    def local_encryption(self, A, M, PKs, l_u_dict, PP):
+    def local_encryption(self, A, M, PKs, PP, l_u_dict: dict={}, encrypting_attr_issuer_name: str=None):
         """
-        This function is executed by anyone who wants to encrypt a message with an access policy.
+        This function is executed by one of the attributes issuers who wants to encrypt a message with an access policy.
         Inputs:
             - A: Access policy represented as a boolean expression string.
             - M: Message to by encrypted.
             - PKs: The public keys of the relevant attribute authorities, as dict from authority name to public key.
-            - l_u_dict: Part of the secret key of the attribute issuer who is encrypting the message. TODO: Write it in another way to make the scheme generic, as it is now efficient for used in the trading system only. The solution is that this should be a standalone dictionary that is not part of the AI secret key and contains a secret number for each attribute used in the access policy he uses to encrypt the message.
             - PP: Public Parameters from the system setup algorithm.
+            - l_u_dict: Part of the secret key of the attribute issuer who is encrypting the message. If the entity
+                        encrypting the message is not an attribute issuer, then this dictionary shall be left empty.
+            - encrypting_attr_issuer_name: If the entity encrypting the message is an attribute issuer, then what is
+                                           its name. Otherwise, the name would be None.
         Outputs:
             - CT: Ciphertext.
             - K_dash: Given to each AM for the re-encryption process.
@@ -460,15 +463,17 @@ class MABERA(ABEncMultiAuth):
         K_dash = {}
         for u in attribute_list:
             attribute_name, auth, _ = self.unpack_attribute(u)
-            attr = "%s@%s" % (attribute_name, auth)
+            attr_full_name = "%s@%s" % (attribute_name, auth)
             rx = self.group.random()
             kx = self.group.random()
             g_kx = PP['g'] ** kx
             C1[u] = (PP['e_gg'] ** secret_shares[u]) * (PKs[auth]['e_gg_alpha_theta'] ** rx)
             C2[u] = PP['g'] ** (-rx)
             C3[u] = PKs[auth]['g_beta_theta'] ** rx * PP['g'] ** zero_shares[u]
-            C4[u] = (self.group.hash(attr, G1) ** rx) * g_kx
-            K_dash[u] = g_kx ** l_u_dict[attribute_name]
+            C4[u] = (self.group.hash(attr_full_name, G1) ** rx) * g_kx
+            lu_value = l_u_dict[attribute_name] if (encrypting_attr_issuer_name == auth and attribute_name in l_u_dict)\
+                else 1
+            K_dash[u] = g_kx ** lu_value
             CT = {'policy': A, 'C0': C0, 'C1': C1, 'C2': C2, 'C3': C3, 'C4': C4}
         return CT, K_dash
 
@@ -687,7 +692,7 @@ def main():
     M = group_obj.random(GT)
     attributes_issuer_pks = get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
     l_u_dict = attr_authorities_pk_sk_dict['TA1']['SK_theta']['l_u_dict'] # Consider TA1 is performing the encryption.
-    CT, K_dash = mabera.local_encryption(policy, M, attributes_issuer_pks, l_u_dict, PP)
+    CT, K_dash = mabera.local_encryption(policy, M, attributes_issuer_pks, PP, l_u_dict, "TA1")
     print("CT: ", CT)
     print("K_dash: ", K_dash)
 
