@@ -96,6 +96,8 @@ class AM:
         self.am_cfg = am_cfg
         self.users_to_attrs_dict: Dict[str, list] = {}
         self.attrs_to_users_dict: Dict[str, list] = {}
+        self.users_init_kek_dict = {}  # The key of the dictionary is the username and the value is the initial kek
+        # generated for this user by the attribute-issuer.
 
         self.users_binary_tree = UsersBinaryTree(group_obj)
 
@@ -206,6 +208,7 @@ class AM:
                 ret_intersection_list.append(user_node)
 
         return ret_intersection_list
+
 
 class ShnorrInteractiveZKP():
     """
@@ -401,6 +404,9 @@ class MABERA(ABEncMultiAuth):
         """
         KEK_i = {}
         for attr in user_attribute_names_list:
+            if user_name not in attributes_manager.users_init_kek_dict:
+                attributes_manager.users_init_kek_dict[user_name] = {}
+            attributes_manager.users_init_kek_dict[user_name].update(init_kek)
             KEK_attr = self.__generate_kek_for_user_with_attr(init_kek, attr, attributes_manager, user_name)
             KEK_i[attr] = KEK_attr
         return KEK_i
@@ -576,6 +582,32 @@ class MABERA(ABEncMultiAuth):
 
         return CT['C0'] / B
 
+    def revoke_attribute(self, revoked_user_name, attribute_name, attributes_manager: AM):
+        """
+        This function is executed by AM when an attribute is revoked from a user.
+        Inputs:
+            - revoked_user_name: The name of the revoked user.
+            - attribute_name: revoked attribute name.
+            - attributes_manager: AM.
+        Outputs:
+            - updated_KEK_dict: The key is the user-name of the user whose KEK key is updated and the value is the
+                                updated KEK key value.
+        """
+        attributes_manager.remove_attr_from_user(attribute_name, revoked_user_name)
+
+        # Get List of the users affected. (The users who hold this attribute)
+        affected_users_names = attributes_manager.attrs_to_users_dict[attribute_name]
+        updated_KEK_dict = {}
+        for a_user_name in affected_users_names:
+            user_attribute_names_list = attributes_manager.users_to_attrs_dict[a_user_name]
+            # KEK generation by AM
+            new_user_KEK = self.user_attributes_kek_generation(attributes_manager.users_init_kek_dict[a_user_name],
+                                                               attributes_manager,
+                                                               user_attribute_names_list,
+                                                               a_user_name)
+            updated_KEK_dict[a_user_name] = new_user_KEK
+        return updated_KEK_dict
+
 
 def main():
     group_obj = PairingGroup('SS512')
@@ -710,6 +742,30 @@ def main():
     dec_msg = mabera.decrypt(PP, CT, Hdr_m_dict[associated_AM_name], users_secret_keys['U1'], 'U1', 'U1', am)
     print("Decrypted Message: ", dec_msg)
     assert M == dec_msg, "FAILED Decryption: message is incorrect"
+
+    # Revoke the attribute `TWO` from user `U1`
+    a_user_cfg = users_cfg_dict['U1']
+    associated_AM_name = a_user_cfg['associated_AM']
+    am = attribute_managers_dict[associated_AM_name]
+    updated_users_KEK_values = mabera.revoke_attribute('U1', 'TWO@TA1', am)
+    for a_user_name in updated_users_KEK_values:  # The updated users KEK keys need to be distributed to the users
+        users_secret_keys[a_user_name]['KEK_i'] = updated_users_KEK_values[a_user_name]
+
+    policy = "ONE@TA1 and TWO@TA1"
+    M = group_obj.random(GT)
+    attributes_issuer_pks = get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
+    l_u_dict = attr_authorities_pk_sk_dict['TA1']['SK_theta']['l_u_dict']  # Consider TA1 is performing the encryption.
+    CT, K_dash = mabera.local_encryption(policy, M, attributes_issuer_pks, PP, l_u_dict, "TA1")
+    print("CT: ", CT)
+    print("K_dash: ", K_dash)
+
+    # U1 will try to decrypt, but this time he will not be able to, because his attribute "TWO@TA1" is revoked.
+    a_user_cfg = users_cfg_dict['U1']
+    associated_AM_name = a_user_cfg['associated_AM']
+    am = attribute_managers_dict[associated_AM_name]
+    dec_msg = mabera.decrypt(PP, CT, Hdr_m_dict[associated_AM_name], users_secret_keys['U1'], 'U1', 'U1', am)
+    print("Decrypted Message: ", dec_msg)
+    # assert M == dec_msg, "FAILED Decryption: message is incorrect" # Uncomment to see the raised error.
     
     # UMK = {} # A value stored privately by TA for each user.
     # users_private_keys_dict = {}
@@ -718,7 +774,7 @@ def main():
     #     # Attribute key generation. Executed by TA.
     #     user_attribute_names_list = attributes_manager.users_to_attrs_dict[user_name]
     #     # KEK generation by AM.
-    #     DSK, KEK = mabera.key_generation(PP, MK, MPK, user_attribute_names_list, user_name, attributes_manager,
+    #     DSK, KEK = mabera.key_generation(PP, MK, MPK_m, user_attribute_names_list, user_name, attributes_manager,
     #                                      UMK, users_kek_i)
     #     users_private_keys_dict[user_name] = {'DSK': DSK, 'KEK': KEK}
     #     print("KEK for {}: {}".format(user_name, users_private_keys_dict[user_name]))
@@ -726,7 +782,7 @@ def main():
     # rand_msg = group_obj.random(GT)
     # print("Message: ", rand_msg)
     # policy_str = '((four or three) and (three or one))'
-    # CT_tilde, Hdr = mabera.encrypt(PP, MMK, rand_msg, policy_str, attributes_manager)
+    # CT_tilde, Hdr = mabera.encrypt(PP, MMK_m, rand_msg, policy_str, attributes_manager)
     # print("CT: ", CT_tilde)
     # user_private_keys_dict = users_private_keys_dict['U2']
     # DSK = user_private_keys_dict['DSK']
@@ -736,8 +792,8 @@ def main():
     # assert rand_msg == recovered_M, "FAILED Decryption: message is incorrect"
     # 
     # # Revoke the attribute `THREE` from user `U2`
-    # updated_users_kek_values = mabera.revoke_attribute('U2', 'THREE', attributes_manager, PP, users_kek_i, MMK,
-    #                                                         MPK)
+    # updated_users_kek_values = mabera.revoke_attribute('U2', 'THREE', attributes_manager, PP, users_kek_i, MMK_m,
+    #                                                         MPK_m)
     # for a_user_name in updated_users_kek_values:  # The updated users KEK keys need to be distributed to the users
     #     users_private_keys_dict[user_name]['KEK'] = updated_users_kek_values[a_user_name]
     # 
@@ -753,7 +809,7 @@ def main():
     # # Add attribute `FOUR` to user `U7`
     # attr_to_be_added = 'FOUR'
     # D_i, D_i_tilde, KEK_user_names_dict_for_attr = mabera.add_attribute('U7', attr_to_be_added, attributes_manager,
-    #                                                                          PP, UMK, users_kek_i, MMK, MPK)
+    #                                                                          PP, UMK, users_kek_i, MMK_m, MPK_m)
     # user_private_keys_dict = users_private_keys_dict['U7']
     # # Update DSK for the user
     # DSK = user_private_keys_dict['DSK']
@@ -769,7 +825,7 @@ def main():
     #     KEK_for_user[attr_to_be_added] = user_KEK_for_added_attr
     # 
     # # Encrypt the same message again.
-    # CT_tilde, Hdr = mabera.encrypt(PP, MMK, rand_msg, policy_str, attributes_manager)
+    # CT_tilde, Hdr = mabera.encrypt(PP, MMK_m, rand_msg, policy_str, attributes_manager)
     # print("CT: ", CT_tilde)
     # user_private_keys_dict = users_private_keys_dict['U2']
     # DSK = user_private_keys_dict['DSK']
