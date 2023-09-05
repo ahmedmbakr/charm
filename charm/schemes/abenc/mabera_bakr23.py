@@ -649,6 +649,10 @@ def main():
         {
             'name': 'TA1',
             'controlled_attrs_names_list': ['ONE', 'TWO', 'THREE', 'FOUR']
+        },
+        {
+            'name': 'TA2',
+            'controlled_attrs_names_list': ['FIVE', 'SIX']
         }
     ]
     attributes_managers_cfg_list = [
@@ -660,7 +664,7 @@ def main():
 
     users_cfg_dict = {
         'U1': {
-            'attributes': ['ONE@TA1', 'FOUR@TA1', 'TWO@TA1'],
+            'attributes': ['ONE@TA1', 'FOUR@TA1', 'TWO@TA1', 'SIX@TA2'],
             'associated_AM': 'AM1'
         },
         'U2': {
@@ -737,14 +741,16 @@ def main():
         attributes_dict = get_attributes_categorized_by_AI_dict(a_user_cfg['attributes']) # AI name is the key
         associated_AM_name = a_user_cfg['associated_AM']
         MPK_m = attr_managers_pk_sk_dict[associated_AM_name]['MPK_m']
-        DSK_i = {}
+        DSK_i = {'D_u_dict': {}, 'D_u_dash_dict': {}}
         kek_init = {}
         g_gamma, gamma = mabera.attribute_key_gen_user_part(PP['g'])
+
         for AI_name, attrs_list_by_AI in attributes_dict.items():
             SK_theta = attr_authorities_pk_sk_dict[AI_name]['SK_theta']
             DSK_i_theta, kek_theta = mabera.attribute_key_gen(attrs_list_by_AI, SK_theta, UID, MPK_m, PP, g_gamma, gamma)
-            DSK_i.update(DSK_i_theta)
             kek_init.update(kek_theta)
+            DSK_i['D_u_dict'].update(DSK_i_theta['D_u_dict'])
+            DSK_i['D_u_dash_dict'].update(DSK_i_theta['D_u_dash_dict'])
 
         # user_attributes_kek_generation(self, init_kek, attributes_manager, user_attribute_names_list, user_name)
         AM_obj = attribute_managers_dict[associated_AM_name]
@@ -785,7 +791,7 @@ def main():
     for a_user_name in updated_users_KEK_values:  # The updated users KEK keys need to be distributed to the users
         users_secret_keys[a_user_name]['KEK_i'].update(updated_users_KEK_values[a_user_name])
 
-    policy = "ONE@TA1 and TWO@TA1"
+    policy = "ONE@TA1 and TWO@TA1 and SIX@TA2"
     M = group_obj.random(GT)
     attributes_issuer_pks = get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
     l_u_dict = attr_authorities_pk_sk_dict['TA1']['SK_theta']['l_u_dict']  # Consider TA1 is performing the encryption.
@@ -833,13 +839,13 @@ def main():
 
     print("{} new secret key {}".format(user_name, users_secret_keys[a_user_name]))
     # Encrypt the message. AB: Only re-encryption is required to generate the new Hdr, which means that the user is not obliged to encrypt again.
-    # policy = "ONE@TA1 and TWO@TA1"
-    # M = group_obj.random(GT)
-    # attributes_issuer_pks = get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
-    # l_u_dict = attr_authorities_pk_sk_dict['TA1']['SK_theta']['l_u_dict']  # Consider TA1 is performing the encryption.
-    # CT, K_dash = mabera.local_encryption(policy, M, attributes_issuer_pks, PP, l_u_dict, "TA1")
-    # print("CT: ", CT)
-    # print("K_dash: ", K_dash)
+    policy = "ONE@TA1 and TWO@TA1"
+    M = group_obj.random(GT)
+    attributes_issuer_pks = get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
+    l_u_dict = attr_authorities_pk_sk_dict['TA1']['SK_theta']['l_u_dict']  # Consider TA1 is performing the encryption.
+    CT, K_dash = mabera.local_encryption(policy, M, attributes_issuer_pks, PP, l_u_dict, "TA1")
+    print("CT: ", CT)
+    print("K_dash: ", K_dash)
     Hdr_m_dict = {}
     for an_AM_name in attribute_managers_dict:
         am = attribute_managers_dict[an_AM_name]
