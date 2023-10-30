@@ -13,7 +13,7 @@ Ahmed Bakr, Ahmad Alsharif, Mahmoud Nabil (Pairing-based)
 | Authors:        Ahmed Bakr
 | Date:           09/2023
 '''
-from charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair
+from charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair,hashPair
 # from charm.toolbox.pairinggroup import *
 from charm.toolbox.secretutil import SecretUtil
 from charm.toolbox.ABEnc import ABEnc, Input, Output
@@ -21,6 +21,7 @@ from charm.toolbox.ABEncMultiAuth import ABEncMultiAuth
 from typing import Dict, List, Tuple
 import queue
 import re
+from hashlib import sha256
 
 # type annotations
 mk_t = {'beta':ZR, 'g_alpha':G1 }
@@ -279,12 +280,11 @@ class MABERA(ABEncMultiAuth):
               'e_gg': e_gg}
         return PP
         
-    def authority_setup(self, name: str, controlled_attrs_names_list: List[str], PP: dict): 
+    def authority_setup(self, name: str, PP: dict):
         """
         Authority Setup algorithm. Executed by the authority issuing a specific set of attributes.
         Inputs:
             - name: Attribute authority name.
-            - controlled_attrs_names_list: List of attribute names TA is controlling.
             - PP: Public Parameters.
         Outputs:
             - PK_theta: Public key for authority (theta).
@@ -294,16 +294,12 @@ class MABERA(ABEncMultiAuth):
         g = PP['g']
         e_gg_alpha_theta = pair(g, g) ** alpha_theta
         g_beta_theta = g ** beta_theta
-        l_u_dict = {}
-        for attr_name in controlled_attrs_names_list:
-            l_u = self.group.random(ZR)
-            l_u_dict[attr_name] = l_u
+
         PK_theta = {'name': name,
                     'e_gg_alpha_theta': e_gg_alpha_theta,
                     'g_beta_theta': g_beta_theta}
         SK_theta = {'alpha_theta': alpha_theta,
-                    'beta_theta': beta_theta,
-                    'l_u_dict': l_u_dict}
+                    'beta_theta': beta_theta}
         
         return PK_theta, SK_theta
 
@@ -320,15 +316,15 @@ class MABERA(ABEncMultiAuth):
         MMK_m = {}
         MPK_m = {}
         for attr in attribute_names:
-            t_u = self.group.random(ZR)
+            t_m_u = self.group.random(ZR)
             g = PP['g']
-            T_u = g ** t_u
-            MMK_m[attr] = t_u
-            MPK_m[attr] = T_u
+            T_m_u = g ** t_m_u
+            MMK_m[attr] = t_m_u
+            MPK_m[attr] = T_m_u
 
         return MMK_m, MPK_m
 
-    def attribute_key_gen(self, attribute_names: List[str], SK_theta, UID, MPK_m, PP, g_gamma, gamma):
+    def attribute_key_gen(self, attribute_names: List[str], SK_theta, UID, MPK_m, PP, g_gamma, gamma_i):
         """
         The attribute issuer (AI) executes this function to issue the decryption key used by the user.
         This function is executed by both the user and the attribute authority interactively.
@@ -338,45 +334,55 @@ class MABERA(ABEncMultiAuth):
             - UID: User_i ID.
             - MPK_m: Attribute Manager (m) public key.
             - PP: Public Parameters from the system setup algorithm.
-            - g_gamma: g ** gamma, where gamma is the secret value chosen by the user and kept secretly by him.
-            - gamma: The secret value chosen by the user and kept secretly by him.
+            - g_gamma: g ** gamma_i, where gamma_i is the secret value chosen by the user and kept secretly by him.
+            - gamma_i: The secret value chosen by the user and kept secretly by him.
         Outputs:
             - DSK_i: Decryption secret key for user_i
             - kek_dict: KEK initial key, which is given to AM_m.
         """
         g = PP['g']
-        self.__attribute_key_gen_interactive_ZKP(PP, g_gamma, gamma)
+        # Interactive ZKP by both the user and the AI, where the user proves knowledge of (gamma_i).
+        self.__attribute_key_gen_interactive_ZKP(PP, g_gamma, gamma_i)
 
         DSK_i, kek_dict = self.__attribute_key_gen_by_AI(MPK_m, SK_theta, UID, attribute_names, g, g_gamma)
 
         return DSK_i, kek_dict
 
     def __attribute_key_gen_by_AI(self, MPK_m, SK_theta, UID, attribute_names, g, g_gamma):
-        # Attributes key generation by AI.
+        """
+        The attribute issuer (AI) executes this function to issue the decryption key used by the user.
+        Inputs:
+            - MPK_m: Attribute Manager (m) public key.
+            - SK_theta: Secret key of the attribute issuer (theta).
+            - UID: User_i ID.
+            - attribute_names: The name of attributes that the attribute authority is issuing for the user.
+            - gamma_i: The secret value chosen by the user and kept secretly by him.
+            - g_gamma: g ** gamma_i, where gamma_i is the secret value chosen by the user and kept secretly by him.
+        Outputs:
+            - DSK_i_theta: Decryption secret key for user_i issued by authority theta
+            - kek_dict: KEK initial key, which is given to AM_m.
+        """
         alpha_theta = SK_theta['alpha_theta']
         beta_theta = SK_theta['beta_theta']
-        l_u_dict = SK_theta['l_u_dict']
         kek_dict = {}
-        D_u_dict = {}
-        D_u_dash_dict = {}
+        D_i_theta_u_dict = {}
+        D_i_theta_u_dash_dict = {}
         for attr_name in attribute_names:
-            r_u = self.group.random(ZR)
-            attr_name_without_AI_name = attr_name.split('@')[0]
-            l_u = l_u_dict[attr_name_without_AI_name]
-            D_u = ((g ** alpha_theta) * (self.group.hash(UID, G1) ** beta_theta) *
-                   (self.group.hash(attr_name, G1) ** (r_u * l_u)))
-            D_u_dash = g_gamma ** (r_u * l_u)
-            kek_theta_u = MPK_m[attr_name] ** r_u
+            r_i_u = self.group.random(ZR)
+            D_i_theta_u = ((g ** alpha_theta) * (self.group.hash(UID, G1) ** beta_theta) *
+                   (self.group.hash(attr_name, G1) ** (r_i_u)))
+            D_i_theta_u_dash = g_gamma ** (r_i_u)
+            kek_theta_u = MPK_m[attr_name] ** r_i_u
             kek_dict[attr_name] = kek_theta_u
-            D_u_dict[attr_name] = D_u
-            D_u_dash_dict[attr_name] = D_u_dash
-        DSK_i = {'D_u_dict': D_u_dict, 'D_u_dash_dict': D_u_dash_dict}
+            D_i_theta_u_dict[attr_name] = D_i_theta_u
+            D_i_theta_u_dash_dict[attr_name] = D_i_theta_u_dash
+        DSK_i_theta = {'D_u_dict': D_i_theta_u_dict, 'D_u_dash_dict': D_i_theta_u_dash_dict}
 
-        return DSK_i, kek_dict
+        return DSK_i_theta, kek_dict
 
-    def __attribute_key_gen_interactive_ZKP(self, PP, g_gamma, gamma):
+    def __attribute_key_gen_interactive_ZKP(self, PP, g_gamma, gamma_i):
         # ZKP interactive Protocol between the user and AI.
-        zkp_prover = ShnorrInteractiveZKP.Prover(gamma, self.group)  # The user.
+        zkp_prover = ShnorrInteractiveZKP.Prover(gamma_i, self.group)  # The user.
         zkp_verifier = ShnorrInteractiveZKP.Verifier(self.group)  # The AI.
         u = zkp_prover.create_prover_commitments(PP)
         c = zkp_verifier.create_verifier_challenge()
@@ -385,11 +391,11 @@ class MABERA(ABEncMultiAuth):
             "User failed to proof knowledge of (g) that is used to calculate g_gamma"
 
     def attribute_key_gen_user_part(self, g):
-        # User choose a secret value (gamma) and shared g ** gamma with AI. Then proves a proof of knowledge of gamma
+        # User choose a secret value (gamma_i) and shared g ** gamma_i with AI. Then proves a proof of knowledge of gamma_i
         # using interactive ZKP.
-        gamma = self.group.random(ZR)
-        g_gamma = g ** gamma
-        return g_gamma, gamma
+        gamma_i = self.group.random(ZR)
+        g_gamma = g ** gamma_i
+        return g_gamma, gamma_i
 
     def user_attributes_kek_generation(self, init_kek, attributes_manager, user_attribute_names_list, user_name):
         """
@@ -421,40 +427,37 @@ class MABERA(ABEncMultiAuth):
             - user_attribute_names_list: Attribute names hold by the user.
             - user_name: User name.
         Outputs:
-            - KEK: Key Encryption Key generated for a specific attribute hold by the user using the users binary tree
-              generated by AM.
+            - KEK_i_theta_u_dict: Key Encryption Key generated for a specific attribute hold by the user using
+                                  the users binary tree generated by AM.
         """
         list_of_users_hold_attr = attributes_manager.attrs_to_users_dict[attr]
-        node_G_i = attributes_manager.get_minimum_nodes_list_that_represent_users_list(list_of_users_hold_attr)
+        node_G_m_u = attributes_manager.get_minimum_nodes_list_that_represent_users_list(list_of_users_hold_attr)
         user_path = attributes_manager.get_user_path(user_name)
-        intersection = attributes_manager.get_user_path_intersection_with_node_gi(user_path, node_G_i)
+        intersection = attributes_manager.get_user_path_intersection_with_node_gi(user_path, node_G_m_u)
         if len(intersection) == 0:
             # AB: Do nothing, as mentioned in the paper.
             return None
         else:
             assert len(intersection) == 1, "The intersection list should have only one element."
-            vj_node: TreeNode = intersection[0]
-            kek_u = init_kek[attr]
+            v_y_node: TreeNode = intersection[0]
+            kek_i_theta_u = init_kek[attr]
             # Consider fixing it later if this functionality is needed.
-            KEK_u = kek_u ** (1 / vj_node.value)
-            KEK_attr = {'seq(vj)': vj_node.sequence_number, 'kek_u': kek_u, 'KEK_u': KEK_u}
-            return KEK_attr
+            KEK_i_theta_u = kek_i_theta_u ** (1 / v_y_node.value)
+            KEK_i_theta_u_dict = {'seq(v_y)': v_y_node.sequence_number, 'kek_u': kek_i_theta_u, 'KEK_u': KEK_i_theta_u}
+            return KEK_i_theta_u_dict
 
-    def local_encryption(self, A, M, PKs, PP, l_u_dict: dict={}, encrypting_attr_issuer_name: str=None):
+    def local_encryption(self, A, M, PKs, PP):
         """
-        This function is executed by one of the attributes issuers who wants to encrypt a message with an access policy.
+        This function is executed by anyone who wants to encrypt a message with an access policy.
         Inputs:
             - A: Access policy represented as a boolean expression string.
             - M: Message to by encrypted.
             - PKs: The public keys of the relevant attribute authorities, as dict from authority name to public key.
             - PP: Public Parameters from the system setup algorithm.
-            - l_u_dict: Part of the secret key of the attribute issuer who is encrypting the message. If the entity
-                        encrypting the message is not an attribute issuer, then this dictionary shall be left empty.
-            - encrypting_attr_issuer_name: If the entity encrypting the message is an attribute issuer, then what is
-                                           its name. Otherwise, the name would be None.
         Outputs:
             - CT: Ciphertext.
-            - K_dash: Given to each AM for the re-encryption process.
+            - K_dash: Given to each AM for the header generation process.
+            - a_xs_dict: The random a_x values used in the encryption because the encryptor will use them later to re-encrypt the headers generated by AMs.
         """
         s = self.group.random(ZR)  # secret to be shared
         w = self.group.init(ZR, 0)  # 0 to be shared
@@ -468,21 +471,22 @@ class MABERA(ABEncMultiAuth):
         C0 = M * (e_gg ** s)
         C1, C2, C3, C4 = {}, {}, {}, {}
         K_dash = {}
+        a_xs_dict = {}
         for u in attribute_list:
             attribute_name, auth, _ = self.unpack_attribute(u)
             attr_full_name = "%s@%s" % (attribute_name, auth)
             rx = self.group.random()
             kx = self.group.random()
+            ax = self.group.random()
+            a_xs_dict[attr_full_name] = ax
             g_kx = PP['g'] ** kx
             C1[u] = (PP['e_gg'] ** secret_shares[u]) * (PKs[auth]['e_gg_alpha_theta'] ** rx)
             C2[u] = PP['g'] ** (-rx)
             C3[u] = PKs[auth]['g_beta_theta'] ** rx * PP['g'] ** zero_shares[u]
-            C4[u] = (self.group.hash(attr_full_name, G1) ** rx) * g_kx
-            lu_value = l_u_dict[attribute_name] if (encrypting_attr_issuer_name == auth and attribute_name in l_u_dict)\
-                else 1
-            K_dash[u] = g_kx ** lu_value
+            C4[u] = (self.group.hash(attr_full_name, G1) ** rx) * (g_kx ** ax)
+            K_dash[u] = g_kx
             CT = {'policy': A, 'C0': C0, 'C1': C1, 'C2': C2, 'C3': C3, 'C4': C4}
-        return CT, K_dash
+        return CT, K_dash, a_xs_dict
 
     def unpack_attribute(self, attribute):
         """
@@ -501,26 +505,123 @@ class MABERA(ABEncMultiAuth):
         assert len(parts) > 1, "No @ char in [attribute@authority] name"
         return parts[0], parts[1], None if len(parts) < 3 else parts[2]
 
-    def reencryption(self, K_dash, MMK, attributes_manager):
+    def generate_ciphertext_headers(self, K_dash, MMK_m, attributes_manager, a_xs_dict, PP: dict):
         """
-        This function is performed by AM and it is the second part of the encryption procedure.
+        This function is mainly performed by the AM and it is the second part of the encryption procedure.
+        After the AM generates the headers for the encrypted message, it sends them to the encryptor for him to add the
+        final part on those headers.
+        Inputs:
+            - K_dash: Given to each AM for the header generation process. It is generated as part of the
+                      local_encryption function.
+            - MMK_m: Manager (m) master key represented as a dictionary.
+            - attributes_manager: AM.
+        Outputs:
+            - Hdr_m_dict: The header for the encrypted message.
         """
-        Hdr = {}
+        Hdr_m_dict = self.generate_ciphertext_headers_by_AM(K_dash, MMK_m, attributes_manager, PP)
+
+        # This function is executed by the encryptor. First, The encryptor verifies that the AM calculated the proof
+        # correctly. Then, it changes internally the Hdr_m_dict for the decryptor to be able to decrypt.
+        self.regenerate_headers_by_encryptor(Hdr_m_dict, a_xs_dict, PP)
+
+        return Hdr_m_dict
+
+    def generate_ciphertext_headers_by_AM(self, K_dash, MMK_m, attributes_manager, PP: dict):
+        """
+        This function is performed by the AM and it is the second part of the encryption procedure.
+        Inputs:
+            - K_dash: Given to each AM for the header generation process. It is generated as part of the
+                      local_encryption function.
+            - MMK_m: Manager (m) master key represented as a dictionary.
+            - attributes_manager: AM.
+            - PP: Public Parameters.
+        Outputs:
+            - Hdr_m_dict: The header for the encrypted message.
+        """
+        Hdr_m_dict = {}
         for attr_name_with_idx in K_dash:
             attr_name_without_idx = self.__get_attr_name_without_idx(attr_name_with_idx)
             if not attr_name_without_idx in attributes_manager.attrs_to_users_dict:
                 # Attribute manager is not responsible for this attribute
                 # AB: TODO: Attention here. You might need to revisit this part.
                 continue
-            Gi = attributes_manager.attrs_to_users_dict[attr_name_without_idx]
-            node_Gi = attributes_manager.get_minimum_nodes_list_that_represent_users_list(Gi)
-            if not attr_name_with_idx in Hdr:
-                Hdr[attr_name_with_idx] = []
-            for a_node_Gi in node_Gi:
-                a_node_Gi: TreeNode = a_node_Gi
-                E_k_y = K_dash[attr_name_without_idx] ** (a_node_Gi.value / MMK[attr_name_without_idx])
-                Hdr[attr_name_with_idx].append({'seq': a_node_Gi.sequence_number, 'E(k_y)': E_k_y})
-        return Hdr
+            G_theta_u = attributes_manager.attrs_to_users_dict[attr_name_without_idx]
+            node_G_theta_u = attributes_manager.get_minimum_nodes_list_that_represent_users_list(G_theta_u)
+            if not attr_name_with_idx in Hdr_m_dict:
+                Hdr_m_dict[attr_name_with_idx] = []
+            for a_node_G_theta_u in node_G_theta_u:
+                a_node_G_theta_u: TreeNode = a_node_G_theta_u
+                E_k_x_v_y = K_dash[attr_name_without_idx] ** (a_node_G_theta_u.value / MMK_m[attr_name_without_idx])
+                # AM Generates the proof.
+                pi_v_y_and_t_m_u = self.__generate_proof_of_correct_header(a_node_G_theta_u.value,
+                                                                           MMK_m[attr_name_without_idx], E_k_x_v_y,
+                                                                           K_dash[attr_name_without_idx], PP)
+                Hdr_m_dict[attr_name_with_idx].append({'seq': a_node_G_theta_u.sequence_number, 'E(k_x,v_y)': E_k_x_v_y,
+                                                       'proof': pi_v_y_and_t_m_u})
+
+        return Hdr_m_dict
+
+    def regenerate_headers_by_encryptor(self, Hdr_m_dict, a_xs_dict, PP):
+        """
+        This function is executed by the encryptor to regererate the final headers after he gets the preliminary ones from the AMs.
+        Inputs:
+            - Hdr_m_dict: Headers dictionary generated by the AM.
+            - a_xs_dict: Private random values chosen by the encryptor when local_encryption function is executed.
+            - PP: Public generic parameters.
+        Outputs:
+            - It changes the value of the dictionary value 'E(k_x, v_y)' inside Hdr_m_dict.
+        """
+
+        # The encryptor adds the final part to the header to be used by the decryptors.
+
+        for an_attr in Hdr_m_dict.keys():
+            for index, _ in enumerate(Hdr_m_dict[an_attr]):
+                hdr_m_y = Hdr_m_dict[an_attr][index]
+                pi_v_y_and_t_m_u = hdr_m_y['proof']
+                self.__verify_correct_header_proof(pi_v_y_and_t_m_u, PP)
+                E_k_x_v_y = hdr_m_y['E(k_x,v_y)']
+                E_dash_k_x_v_y = E_k_x_v_y ** a_xs_dict[an_attr]
+                Hdr_m_dict[an_attr][index]['E(k_x,v_y)'] = E_dash_k_x_v_y
+    def __generate_proof_of_correct_header(self, v_y, MMK_m_u, E_k_x_v_y, K_dash_u, PP):
+        """
+        In this function, the AM proves that he have correctly calculated the header using Fiat-Shamir non-interactive
+        protocol.
+        """
+        global R_v_y, R_t_m_u, R_E_k_x_v_y # AB: TODO: To be removed.
+        g = PP['g']
+        V_y, one_over_T_m_u, VT = g ** v_y, g ** (1/MMK_m_u), g**(v_y/MMK_m_u)
+        r_v_y, r_t_m_u, r_v_t = self.group.random(ZR), self.group.random(ZR), self.group.random(ZR)
+        R_v_y, R_t_m_u, R_v_t = g ** r_v_y, g ** r_t_m_u, g** r_v_t
+        R_E_k_x_v_y = K_dash_u ** (r_v_t) # AB: It is multiplication not division because r_t_m_u represents (1/t_m_u)
+        challenge = self.calculate_hash_of_EC_points(E_k_x_v_y, K_dash_u, V_y, one_over_T_m_u, R_v_y, R_t_m_u, R_v_t, R_E_k_x_v_y)
+        s_v_y, s_t_m_u, s_v_t = r_v_y + challenge * v_y, r_t_m_u + challenge * (1/MMK_m_u), r_v_t + challenge * (v_y/MMK_m_u)
+        pi_v_y_and_t_m_u = (E_k_x_v_y, K_dash_u, V_y, one_over_T_m_u, VT, s_v_y, s_t_m_u, s_v_t, challenge)
+        return pi_v_y_and_t_m_u
+
+    def __verify_correct_header_proof(self, pi_v_y_and_t_m_u, PP):
+        """
+        This function is executed by the encryptor to make sure that the AM has successfully computed the header.
+        """
+        global R_v_y, R_t_m_u, R_E_k_x_v_y  # AB: TODO: To be removed.
+        g = PP['g']
+        (E_k_x_v_y, K_dash_u, V_y, one_over_T_m_u, VT, s_v_y, s_t_m_u, s_v_t, challenge) = pi_v_y_and_t_m_u
+        R_dash_v_y = (g ** s_v_y) * V_y ** (-challenge)
+        R_dash_t_m_u = (g ** s_t_m_u) * one_over_T_m_u ** (-challenge)
+        R_dash_v_t = (g ** s_v_t) * VT ** (-challenge)
+        R_dash_E_k_x_v_y = K_dash_u ** (s_v_t) * E_k_x_v_y ** (-challenge) # AB: s_t_m_u represents (1/t_m_u)
+        challenge_dash = self.calculate_hash_of_EC_points(E_k_x_v_y, K_dash_u, V_y, one_over_T_m_u,
+                                                          R_dash_v_y, R_dash_t_m_u, R_dash_v_t, R_dash_E_k_x_v_y)
+        assert challenge_dash == challenge, \
+            "User failed to proof knowledge of (g) that is used to calculate g_gamma"
+
+
+    def calculate_hash_of_EC_points(self, *points_list):
+        accum = ""
+        for a_point in points_list:
+            accum += hashPair(a_point).decode('utf-8')
+        accum = bytes(bytearray.fromhex(accum))
+        hash_val = int.from_bytes(sha256(accum).digest(), byteorder='big')
+        return self.group.init(ZR, hash_val)
 
     def __get_attr_name_without_idx(self, attr_name: str):
         if attr_name.find('_') == -1:
@@ -536,7 +637,7 @@ class MABERA(ABEncMultiAuth):
             - PP: Public Parameters from the system setup algorithm.
             - CT_tilde: Ciphertext after re-encryption by the AM.
             - Hdr: Header message.
-            - user_secret_keys: Contains user secret keys DSK (from AI), KEK (from AM), gamma (Privately preserved value)
+            - user_secret_keys: Contains user secret keys DSK (from AI), KEK (from AM), gamma_i (Privately preserved value)
             - UID: User ID.
             - user_name: Username who is decrypting the ciphertext.
             - attributes_manager: AM.
@@ -545,7 +646,7 @@ class MABERA(ABEncMultiAuth):
         """
         DSK_i = user_secret_keys['DSK_i']
         KEK_i = user_secret_keys['KEK_i']
-        gamma = user_secret_keys['gamma']
+        gamma_i = user_secret_keys['gamma_i']
         policy = self.util.createPolicy(CT['policy'])
         coefficients = self.util.getCoefficients(policy)
         pruned_list = self.util.prune(policy, DSK_i['D_u_dict'].keys())
@@ -569,16 +670,16 @@ class MABERA(ABEncMultiAuth):
                         found = True
                 if found:
                     chosen_Hdr_element = hdr_elem
-            E_k_y = chosen_Hdr_element['E(k_y)']
+            E_k_x_v_y = chosen_Hdr_element['E(k_x,v_y)']
             C1_x = CT['C1'][attr_name_with_idx]
             C2_x = CT['C2'][attr_name_with_idx]
             C3_x = CT['C3'][attr_name_with_idx]
             C4_x = CT['C4'][attr_name_with_idx]
             D_x = DSK_i['D_u_dict'][attr_name_without_idx]
             D_dash_x = DSK_i['D_u_dash_dict'][attr_name_without_idx]
-            nominator = ((C1_x ** gamma) * pair(D_x, C2_x ** gamma) * pair(self.group.hash(UID, G1) ** gamma, C3_x)
-                         * pair(D_dash_x, C4_x)) ** (1 / gamma)
-            denominator = pair(KEK_i_u, E_k_y)
+            nominator = ((C1_x ** gamma_i) * pair(D_x, C2_x ** gamma_i) * pair(self.group.hash(UID, G1) ** gamma_i, C3_x)
+                         * pair(D_dash_x, C4_x)) ** (1 / gamma_i)
+            denominator = pair(KEK_i_u, E_k_x_v_y)
             B *= (nominator / denominator) ** coefficients[attr_name_with_idx]
 
         return CT['C0'] / B
@@ -609,7 +710,7 @@ class MABERA(ABEncMultiAuth):
             updated_KEK_dict[a_user_name] = new_user_KEK
         return updated_KEK_dict
 
-    def add_attribute(self, user_name, attribute_name, SK_theta, UID: str, attributes_manager: AM, PP, MPK_m, g_gamma, gamma):
+    def add_attribute(self, user_name, attribute_name, SK_theta, UID: str, attributes_manager: AM, PP, MPK_m, g_gamma, gamma_i):
         """
         This function is executed by AM when an attribute is added to a user.
         Inputs:
@@ -626,7 +727,7 @@ class MABERA(ABEncMultiAuth):
                                 updated KEK key value.
         """
         # AI updates D_i, D_i_tilde and send it to the user for him to append it to his DSK
-        DSK_i_theta_u, kek_theta = self.attribute_key_gen([attribute_name], SK_theta, UID, MPK_m, PP, g_gamma, gamma)
+        DSK_i_theta_u, kek_theta = self.attribute_key_gen([attribute_name], SK_theta, UID, MPK_m, PP, g_gamma, gamma_i)
         attributes_manager.users_init_kek_dict[user_name].update(kek_theta)
 
         # AM updates the users tree and returns to each affected user its updated KEK for this attribute.
@@ -719,8 +820,7 @@ def main():
     attr_authorities_pk_sk_dict = {}
     for attr_authority_dict in attributes_authorities_list:
         name = attr_authority_dict['name']
-        controlled_attrs_names_list = attr_authority_dict['controlled_attrs_names_list']
-        PK_theta, SK_theta = mabera.authority_setup(name, controlled_attrs_names_list, PP)
+        PK_theta, SK_theta = mabera.authority_setup(name, PP)
         attr_authorities_pk_sk_dict[name] = {'PK_theta': PK_theta,
                                              'SK_theta': SK_theta}
         print("Attribute Authority {} PK: {}, SK: {}".format(name, PK_theta, SK_theta))
@@ -743,11 +843,11 @@ def main():
         MPK_m = attr_managers_pk_sk_dict[associated_AM_name]['MPK_m']
         DSK_i = {'D_u_dict': {}, 'D_u_dash_dict': {}}
         kek_init = {}
-        g_gamma, gamma = mabera.attribute_key_gen_user_part(PP['g'])
+        g_gamma, gamma_i = mabera.attribute_key_gen_user_part(PP['g'])
 
         for AI_name, attrs_list_by_AI in attributes_dict.items():
             SK_theta = attr_authorities_pk_sk_dict[AI_name]['SK_theta']
-            DSK_i_theta, kek_theta = mabera.attribute_key_gen(attrs_list_by_AI, SK_theta, UID, MPK_m, PP, g_gamma, gamma)
+            DSK_i_theta, kek_theta = mabera.attribute_key_gen(attrs_list_by_AI, SK_theta, UID, MPK_m, PP, g_gamma, gamma_i)
             kek_init.update(kek_theta)
             DSK_i['D_u_dict'].update(DSK_i_theta['D_u_dict'])
             DSK_i['D_u_dash_dict'].update(DSK_i_theta['D_u_dash_dict'])
@@ -756,15 +856,14 @@ def main():
         AM_obj = attribute_managers_dict[associated_AM_name]
         KEK_i = mabera.user_attributes_kek_generation(kek_init, AM_obj, a_user_cfg['attributes'], a_user_name)
 
-        users_secret_keys[a_user_name] = {'DSK_i': DSK_i, 'KEK_i': KEK_i, 'gamma': gamma}
+        users_secret_keys[a_user_name] = {'DSK_i': DSK_i, 'KEK_i': KEK_i, 'gamma_i': gamma_i}
         print("DSK for user {}: {}".format(a_user_name, users_secret_keys[a_user_name]))
 
     # Encrypt the message.
     policy = "ONE@TA1 and TWO@TA1"
     M = group_obj.random(GT)
     attributes_issuer_pks = get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
-    l_u_dict = attr_authorities_pk_sk_dict['TA1']['SK_theta']['l_u_dict'] # Consider TA1 is performing the encryption.
-    CT, K_dash = mabera.local_encryption(policy, M, attributes_issuer_pks, PP, l_u_dict, "TA1")
+    CT, K_dash, a_xs_dict = mabera.local_encryption(policy, M, attributes_issuer_pks, PP)
     print("CT: ", CT)
     print("K_dash: ", K_dash)
 
@@ -772,7 +871,7 @@ def main():
     for an_AM_name in attribute_managers_dict:
         am = attribute_managers_dict[an_AM_name]
         MMK_m = attr_managers_pk_sk_dict[an_AM_name]['MMK_m']
-        Hdr_m_dict[an_AM_name] = mabera.reencryption(K_dash, MMK_m, am)
+        Hdr_m_dict[an_AM_name] = mabera.generate_ciphertext_headers(K_dash, MMK_m, am, a_xs_dict, PP)
     print("Hdr: ", Hdr_m_dict)
 
     # U1 will try to decrypt
@@ -794,15 +893,14 @@ def main():
     policy = "ONE@TA1 and TWO@TA1 and SIX@TA2"
     M = group_obj.random(GT)
     attributes_issuer_pks = get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
-    l_u_dict = attr_authorities_pk_sk_dict['TA1']['SK_theta']['l_u_dict']  # Consider TA1 is performing the encryption.
-    CT, K_dash = mabera.local_encryption(policy, M, attributes_issuer_pks, PP, l_u_dict, "TA1")
+    CT, K_dash, a_xs_dict = mabera.local_encryption(policy, M, attributes_issuer_pks, PP)
     print("CT: ", CT)
     print("K_dash: ", K_dash)
     Hdr_m_dict = {}
     for an_AM_name in attribute_managers_dict:
         am = attribute_managers_dict[an_AM_name]
         MMK_m = attr_managers_pk_sk_dict[an_AM_name]['MMK_m']
-        Hdr_m_dict[an_AM_name] = mabera.reencryption(K_dash, MMK_m, am)
+        Hdr_m_dict[an_AM_name] = mabera.generate_ciphertext_headers(K_dash, MMK_m, am, a_xs_dict, PP)
     print("Hdr: ", Hdr_m_dict)
 
     # U1 will try to decrypt, but this time he will not be able to, because his attribute "TWO@TA1" is revoked.
@@ -822,10 +920,10 @@ def main():
     associated_AM_name = a_user_cfg['associated_AM']
     am = attribute_managers_dict[associated_AM_name]
     MPK_m = attr_managers_pk_sk_dict[associated_AM_name]['MPK_m']
-    gamma = users_secret_keys[user_name]['gamma']
-    g_gamma = PP['g'] ** gamma
+    gamma_i = users_secret_keys[user_name]['gamma_i']
+    g_gamma = PP['g'] ** gamma_i
     DSK_i_theta_u, KEK_user_names_dict_for_attr = mabera.add_attribute(user_name, attr_to_be_added, SK_theta,
-                                                                       user_name, am, PP, MPK_m, g_gamma, gamma)
+                                                                       user_name, am, PP, MPK_m, g_gamma, gamma_i)
     users_secret_keys[user_name]['DSK_i']['D_u_dict'].update(DSK_i_theta_u['D_u_dict'])
     users_secret_keys[user_name]['DSK_i']['D_u_dash_dict'].update(DSK_i_theta_u['D_u_dash_dict'])
 
@@ -842,15 +940,14 @@ def main():
     policy = "ONE@TA1 and TWO@TA1"
     M = group_obj.random(GT)
     attributes_issuer_pks = get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
-    l_u_dict = attr_authorities_pk_sk_dict['TA1']['SK_theta']['l_u_dict']  # Consider TA1 is performing the encryption.
-    CT, K_dash = mabera.local_encryption(policy, M, attributes_issuer_pks, PP, l_u_dict, "TA1")
+    CT, K_dash, a_xs_dict = mabera.local_encryption(policy, M, attributes_issuer_pks, PP)
     print("CT: ", CT)
     print("K_dash: ", K_dash)
     Hdr_m_dict = {}
     for an_AM_name in attribute_managers_dict:
         am = attribute_managers_dict[an_AM_name]
         MMK_m = attr_managers_pk_sk_dict[an_AM_name]['MMK_m']
-        Hdr_m_dict[an_AM_name] = mabera.reencryption(K_dash, MMK_m, am)
+        Hdr_m_dict[an_AM_name] = mabera.generate_ciphertext_headers(K_dash, MMK_m, am, a_xs_dict, PP)
     print("Hdr: ", Hdr_m_dict)
 
     # U7 will try to decrypt.
