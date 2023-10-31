@@ -2,11 +2,11 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-def draw_num_leafs_against_num_users(paper_citation_num):
+
+def draw_num_leafs_against_num_users(paper_citation_num, bytes_per_node=24):
     """This function is to show that our scheme is more efficient for large number of users, as their solution has only
     one AM, but ours allows the usage of many AMs.
     """
-    # num_users_list = [2, 2**4, 2**8, 2**16, 2**17, 2**18, 2**20, 2**24] # Fixed x-axis values
     num_users_list = [10, 10**2, 10**3, 10**4, 10**5, 10**6, 10**7, 10**8] # Fixed x-axis values
     num_AMs_configurations = [1, 2, 10, 100] # When AM is 1, I mean the paper I am comparing with.
     graph_colors_list = ['r', 'b', 'g', 'c']
@@ -27,17 +27,16 @@ def draw_num_leafs_against_num_users(paper_citation_num):
 
             tree_level = math.ceil(math.log(num_users_per_AM, 2))
             num_nodes = 2 ** (tree_level + 1) - 1
-            num_tree_nodes_dict[num_AMs].append(num_nodes)
+            num_tree_nodes_dict[num_AMs].append(num_nodes * bytes_per_node) # AB: A workaround to convert the number of nodes to bytes without many changes in the code
     print(num_tree_nodes_dict)
 
     fig = plt.figure()
-    plt.xlabel('Num users')
-    plt.ylabel('Num tree nodes')
+    plt.xlabel('Num. users')
+    plt.ylabel('Tree storage overhead (bytes)')
     # plt.title('N')
     for idx, num_AMs in enumerate(num_AMs_configurations):
         plt.plot(num_users_list, num_tree_nodes_dict[num_AMs], '{}'.format(graph_colors_list[idx]),
                  label='{}'.format(labels_list[idx]))
-        print("plot added")
     plt.legend()
     # fig.show()
     plt.show(block=True)
