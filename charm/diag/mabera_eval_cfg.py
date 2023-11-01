@@ -1,10 +1,10 @@
 
-V2V_SIMULATION_DICT = {
+SIMULATION_DICT = {
     'repeat_simulation_counter': 1,  # How many times you want this simulation to be repeated then an average of the
     'simulation_resume': False,  # Whether you want the simulation to resume from the last simulation iteration
     # results is reported
     'serialization_paths': {
-        'serialized_output_pattern': 'serialize_simulation_results_run_{}.p',
+        'reported_times_per_AM_dict_pickle_path': './diag_output/reported_times_per_AM_dict_pickle_path.p',
         'serialized_output_folder': 'diag_output'  # The path is relative to this file.
     },
     'ranges': {
