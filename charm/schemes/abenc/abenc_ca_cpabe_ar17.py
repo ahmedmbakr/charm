@@ -162,8 +162,8 @@ class AM:
         if node.right:
             self.__traverse_to_mark_all_children_visited_arr(node.right, visited_arr)
 
-        visited_arr[node.sequence_number] = visited_arr[node.left.sequence_number] and visited_arr[
-            node.right.sequence_number]
+        visited_arr[node.sequence_number] = (not node.left or visited_arr[node.left.sequence_number]) and (not node.right or visited_arr[
+            node.right.sequence_number])
 
     def __traverse_bfs_to_get_minimum_number_nodes_to_cover_users_list(self, visited_arr) -> List[TreeNode]:
         ret_list = []
@@ -237,8 +237,8 @@ class CaCpabeAr(ABEnc):
             - attribute_names: The name of attributes that AM is responsible for.
             - PP: Public Parameters from the system setup algorithm.
         Outputs:
-            - MMK: Manager master key represented as a dictionary.
-            - MPK: Manager public key represented as a dictionary.
+            - MMK_m: Manager master key represented as a dictionary.
+            - MPK_m: Manager public key represented as a dictionary.
         """
         MMK = {}
         MPK = {}
@@ -259,7 +259,7 @@ class CaCpabeAr(ABEnc):
         Inputs:
             - PP: Public Parameters from the system setup algorithm.
             - MK: TA's master secret key.
-            - MPK: Manager public key represented as a dictionary.
+            - MPK_m: Manager public key represented as a dictionary.
             - user_attribute_names_list: Attribute names hold by the user.
             - user_name: User name.
             - attributes_manager: AM.
@@ -287,7 +287,7 @@ class CaCpabeAr(ABEnc):
         This function is executed by TA and considered as part of key generation procedure.
         Inputs:
             - MK: TA's master secret key.
-            - MPK: Manager public key represented as a dictionary.
+            - MPK_m: Manager public key represented as a dictionary.
             - PP: Public Parameters from the system setup algorithm.
             - user_attribute_names_list: Attribute names hold by the user.
             - user_name: User name.
@@ -371,7 +371,7 @@ class CaCpabeAr(ABEnc):
         perform the re-encryption.
         Inputs:
             - PP: Public Parameters from the system setup algorithm.
-            - MMK: Manager master key represented as a dictionary.
+            - MMK_m: Manager master key represented as a dictionary.
             - M: Message to by encrypted.
             - A: Access policy represented as a boolean expression string.
         Outputs:
@@ -497,8 +497,8 @@ class CaCpabeAr(ABEnc):
             - PP: Public Parameters from the system setup algorithm.
             - users_kek_i: A list privately acquired by AM from TA as part of key_generation function.
         Inputs/Outputs:
-            - MMK: Manager master key represented as a dictionary.
-            - MPK: Manager public key represented as a dictionary.
+            - MMK_m: Manager master key represented as a dictionary.
+            - MPK_m: Manager public key represented as a dictionary.
         Outputs:
             - updated_KEK_dict: The key is the user-name of the user whose KEK key is updated and the value is the
                                 updated KEK key value.
@@ -538,8 +538,8 @@ class CaCpabeAr(ABEnc):
               user_name is the key and a group element is the value.
             - users_kek_i: A list privately acquired by AM from TA as part of key_generation function.
         Inputs/Outputs:
-            - MMK: Manager master key represented as a dictionary.
-            - MPK: Manager public key represented as a dictionary.
+            - MMK_m: Manager master key represented as a dictionary.
+            - MPK_m: Manager public key represented as a dictionary.
         Outputs:
             - updated_KEK_dict: The key is the user-name of the user whose KEK key is updated and the value is the
                                 updated KEK key value.
@@ -591,8 +591,8 @@ def main():
 
     attributes_names = ['ONE', 'TWO', 'THREE', 'FOUR']
     MMK, MPK = ca_cpabe_ar.manager_setup(attributes_names, PP)
-    print("MMK: ", MMK)
-    print("MPK: ", MPK)
+    print("MMK_m: ", MMK)
+    print("MPK_m: ", MPK)
 
     UMK = {} # A value stored privately by TA for each user.
     users_private_keys_dict = {}

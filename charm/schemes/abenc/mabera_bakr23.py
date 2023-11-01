@@ -167,8 +167,8 @@ class AM:
         if node.right:
             self.__traverse_to_mark_all_children_visited_arr(node.right, visited_arr)
 
-        visited_arr[node.sequence_number] = visited_arr[node.left.sequence_number] and visited_arr[
-            node.right.sequence_number]
+        visited_arr[node.sequence_number] = (not node.left or visited_arr[node.left.sequence_number]) and (not node.right or visited_arr[
+            node.right.sequence_number])
 
     def __traverse_bfs_to_get_minimum_number_nodes_to_cover_users_list(self, visited_arr) -> List[TreeNode]:
         ret_list = []
