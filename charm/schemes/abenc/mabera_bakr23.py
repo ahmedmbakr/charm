@@ -526,7 +526,7 @@ class MABERA(ABEncMultiAuth):
 
         return Hdr_m_dict
 
-    def generate_ciphertext_headers_by_AM(self, K_dash, MMK_m, attributes_manager, PP: dict):
+    def generate_ciphertext_headers_by_AM(self, K_dash, MMK_m, attributes_manager, PP: dict, zkp_enabled=True):
         """
         This function is performed by the AM and it is the second part of the encryption procedure.
         Inputs:
@@ -553,15 +553,18 @@ class MABERA(ABEncMultiAuth):
                 a_node_G_theta_u: TreeNode = a_node_G_theta_u
                 E_k_x_v_y = K_dash[attr_name_without_idx] ** (a_node_G_theta_u.value / MMK_m[attr_name_without_idx])
                 # AM Generates the proof.
-                pi_v_y_and_t_m_u = self.__generate_proof_of_correct_header(a_node_G_theta_u.value,
+                if zkp_enabled:
+                    pi_v_y_and_t_m_u = self.__generate_proof_of_correct_header(a_node_G_theta_u.value,
                                                                            MMK_m[attr_name_without_idx], E_k_x_v_y,
                                                                            K_dash[attr_name_without_idx], PP)
+                else:
+                    pi_v_y_and_t_m_u = None
                 Hdr_m_dict[attr_name_with_idx].append({'seq': a_node_G_theta_u.sequence_number, 'E(k_x,v_y)': E_k_x_v_y,
                                                        'proof': pi_v_y_and_t_m_u})
 
         return Hdr_m_dict
 
-    def regenerate_headers_by_encryptor(self, Hdr_m_dict, a_xs_dict, PP):
+    def regenerate_headers_by_encryptor(self, Hdr_m_dict, a_xs_dict, PP, zkp_enabled=True):
         """
         This function is executed by the encryptor to regererate the final headers after he gets the preliminary ones from the AMs.
         Inputs:
@@ -578,10 +581,12 @@ class MABERA(ABEncMultiAuth):
             for index, _ in enumerate(Hdr_m_dict[an_attr]):
                 hdr_m_y = Hdr_m_dict[an_attr][index]
                 pi_v_y_and_t_m_u = hdr_m_y['proof']
-                self.__verify_correct_header_proof(pi_v_y_and_t_m_u, PP)
+                if zkp_enabled:
+                    self.__verify_correct_header_proof(pi_v_y_and_t_m_u, PP)
                 E_k_x_v_y = hdr_m_y['E(k_x,v_y)']
                 E_dash_k_x_v_y = E_k_x_v_y ** a_xs_dict[an_attr]
                 Hdr_m_dict[an_attr][index]['E(k_x,v_y)'] = E_dash_k_x_v_y
+    
     def __generate_proof_of_correct_header(self, v_y, MMK_m_u, E_k_x_v_y, K_dash_u, PP):
         """
         In this function, the AM proves that he have correctly calculated the header using Fiat-Shamir non-interactive

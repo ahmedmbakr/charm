@@ -16,7 +16,7 @@ import abenc_ca_cpabe_ar17 as cpabe_f
 
 
 def enc_time_vs_num_attrs_exp(reported_times_per_AM_dict_pickle_path, total_num_users=100,
-                              min_num_attrs_per_user=1, max_num_attrs_per_user=20, inc_num_attrs_per_user=10):
+                              min_num_attrs_per_user=1, max_num_attrs_per_user=20, inc_num_attrs_per_user=10, disable_zkp=False):
     number_of_AMs_to_test = ['CP-ABE', 1, 10, 20]
     graph_colors_list = ['r', 'b', 'g', 'c']
     labels_list = ['CP-ABE', 'Our scheme with 1 AMs', 'Our scheme with 10 AMs', 'Our scheme with 20 AMs']
@@ -69,7 +69,7 @@ def enc_time_vs_num_attrs_exp(reported_times_per_AM_dict_pickle_path, total_num_
                 # The main purpose of the function is to change the value reported_times_per_AM_dict[an_AM]
                 enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
                                                             group_obj, mabera, num_AMs, num_attrs,
-                                                            reported_times_per_AM_dict, users_cfg_dict)
+                                                            reported_times_per_AM_dict, users_cfg_dict, disable_zkp=disable_zkp)
             pickle.dump(reported_times_per_AM_dict, open(reported_times_per_AM_dict_pickle_path, 'wb'))
     fig = plt.figure()
     plt.xlabel('Num. attributes')
@@ -150,7 +150,7 @@ def enc_time_vs_num_attrs_single_cfg_run_CP_ABE(attributes_managers_cfg_list, gr
 
 def enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
                                                 group_obj, mabera, num_AMs, num_attrs, reported_times_per_AM_dict,
-                                                users_cfg_dict):
+                                                users_cfg_dict, disable_zkp=False):
     # Initialize the users with their list of attributes.
     for user_name in users_cfg_dict:
         for attr_idx in range(num_attrs):
@@ -223,7 +223,7 @@ def enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict,
         am = attribute_managers_dict[an_AM_name]
         MMK_m = attr_managers_pk_sk_dict[an_AM_name]['MMK_m']
         tic = time.time()
-        Hdr_m_dict[an_AM_name] = mabera.generate_ciphertext_headers_by_AM(K_dash, MMK_m, am, PP)
+        Hdr_m_dict[an_AM_name] = mabera.generate_ciphertext_headers_by_AM(K_dash, MMK_m, am, PP, zkp_enabled=disable_zkp)
         am_enc_header_gen_time = (time.time() - tic) * 1000
         # This function is executed by the encryptor. First, The encryptor verifies that the AM calculated the proof
         # correctly. Then, it changes internally the Hdr_m_dict for the decryptor to be able to decrypt.
@@ -243,4 +243,4 @@ def enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict,
 if __name__ == '__main__':
     reported_times_per_AM_pickle_path = SIMULATION_DICT['serialization_paths']['reported_times_per_AM_dict_pickle_path']
     reported_times_per_AM_pickle_path = os.path.abspath(reported_times_per_AM_pickle_path)
-    enc_time_vs_num_attrs_exp(reported_times_per_AM_pickle_path)
+    enc_time_vs_num_attrs_exp(reported_times_per_AM_pickle_path, disable_zkp=True)
