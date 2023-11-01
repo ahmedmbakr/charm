@@ -7,6 +7,7 @@ SIMULATION_DICT = {
         'serialized_output_folder': 'diag_output'  # The path is relative to this file.
     },
     'enc_time_vs_num_attrs_exp': {
+        'enabled': True,
         'draw': False,
         'disable_zkp': True,
         'reported_times_per_AM_dict_pickle_path': './diag_output/reported_times_per_AM_dict_pickle_{}.p',
@@ -17,6 +18,19 @@ SIMULATION_DICT = {
         'number_of_AMs_to_test': ['CA-ABE', 1, 10, 20],
         'graph_colors_list': ['r', 'b', 'g', 'c'],
         'labels_list': ['CA-ABE', 'Our scheme with 1 AMs', 'Our scheme with 10 AMs', 'Our scheme with 20 AMs']
+    },
+    'enc_time_vs_num_users_exp': {
+        'enabled': True,
+        'reported_enc_time_vs_num_users_pickle_path': './diag_output/reported_enc_time_vs_num_users_pickle_{}.p',
+        'total_num_attrs': 5,
+        'min_num_users': 50,
+        'max_num_users': 70,
+        'inc_num_users': 10,
+        'number_of_AMs_to_test': ['CA-ABE', 1, 10, 20],
+        'graph_colors_list': ['r', 'b', 'g', 'c'],
+        'labels_list': ['CA-ABE', 'Our scheme with 1 AMs', 'Our scheme with 10 AMs', 'Our scheme with 20 AMs'],
+        'draw': True,
+        'disable_zkp': True,
     },
     'ranges': {
         'num_AAs': {  # Num attribute authorities
