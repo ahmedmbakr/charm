@@ -251,15 +251,24 @@ def enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict,
             num_attrs, num_AMs, local_enc_time, enc_header_gen_time, hdr_regeneration_by_enc_time, overall_enc_time))
 
 
-def get_avgeraged_dict(list_of_dicts: List[Dict[str, int]]):
-    first_dict = list_of_dicts[0]
+def get_avgeraged_dict(list_of_dicts: List[Dict[str, Dict[str, int]]]):
     avg_dict = {}
-    for key in first_dict:
-        avg_dict[key] = 0
-        for a_dict in list_of_dicts:
-            avg_dict[key] += a_dict[key]
+    for simulation_round_dict in list_of_dicts:
+        for a_graph_key in simulation_round_dict:
+            if a_graph_key not in avg_dict:
+                avg_dict[a_graph_key] = {}
+            for attr_name in simulation_round_dict[a_graph_key]:
+                if 'time' not in attr_name:
+                    avg_dict[a_graph_key][attr_name] = simulation_round_dict[a_graph_key][attr_name][0]
+                    continue
+                if attr_name not in avg_dict[a_graph_key]:
+                    avg_dict[a_graph_key][attr_name] = [0] * len(simulation_round_dict[a_graph_key][attr_name])
+                for idx, elem in enumerate(simulation_round_dict[a_graph_key][attr_name]):
+                    avg_dict[a_graph_key][attr_name][idx] += elem / len(list_of_dicts)
 
     return avg_dict
+
+
 
 
 def main(simulation_dict):
