@@ -15,7 +15,7 @@ import mabera_bakr23 as mabera_f
 import abenc_ca_cpabe_ar17 as cpabe_f
 
 
-def enc_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_path, cfg):
+def enc_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_path, cfg, header_regeneration_enabled=True):
     print("Experiment of number of attributes VS time")
     total_num_users = cfg['total_num_users']
     min_num_attrs_per_user = cfg['min_num_attrs_per_user']
@@ -76,7 +76,7 @@ def enc_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_path, 
                 # The main purpose of the function is to change the value reported_times_per_AM_dict[an_AM]
                 enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
                                                             group_obj, mabera, num_AMs, num_attrs,
-                                                            reported_times_per_AM_dict, users_cfg_dict, disable_zkp=disable_zkp)
+                                                            reported_times_per_AM_dict, users_cfg_dict, disable_zkp=disable_zkp, header_regeneration_enabled=header_regeneration_enabled)
             pickle.dump(reported_times_per_AM_dict, open(reported_times_per_AM_dict_pickle_path, 'wb'))
     if draw:
         fig = plt.figure()
@@ -162,7 +162,7 @@ def enc_time_vs_num_attrs_single_cfg_run_CP_ABE(attributes_managers_cfg_list, gr
 
 def enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
                                                 group_obj, mabera, num_AMs, num_attrs, reported_times_per_AM_dict,
-                                                users_cfg_dict, disable_zkp=False):
+                                                users_cfg_dict, disable_zkp=False, header_regeneration_enabled=True):
     # Initialize the users with their list of attributes.
     for user_name in users_cfg_dict:
         for attr_idx in range(num_attrs):
@@ -240,16 +240,22 @@ def enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict,
         # This function is executed by the encryptor. First, The encryptor verifies that the AM calculated the proof
         # correctly. Then, it changes internally the Hdr_m_dict for the decryptor to be able to decrypt.
         tic = time.time()
-        mabera.regenerate_headers_by_encryptor(Hdr_m_dict[an_AM_name], a_xs_dict, PP)
+        if header_regeneration_enabled:
+            mabera.regenerate_headers_by_encryptor(Hdr_m_dict[an_AM_name], a_xs_dict, PP)
         hdr_regeneration_by_enc_time += (time.time() - tic) * 1000
         enc_header_gen_time = max(enc_header_gen_time, am_enc_header_gen_time)
     # print("Hdr: ", Hdr_m_dict)
-    overall_enc_time = local_enc_time + enc_header_gen_time + (hdr_regeneration_by_enc_time - enc_header_gen_time)
+    if header_regeneration_enabled:
+        overall_enc_time = local_enc_time + enc_header_gen_time + (hdr_regeneration_by_enc_time - enc_header_gen_time)
+    else:
+        overall_enc_time = local_enc_time + enc_header_gen_time
     reported_times_per_AM_dict[num_AMs]['num_attrs'].append(num_attrs)
     reported_times_per_AM_dict[num_AMs]['overall_enc_time'].append(overall_enc_time)
+    average_hdr_regen_time = hdr_regeneration_by_enc_time / len(attribute_managers_dict)
     print(
-        "With the configurations: num atts: {}, num_AMs: {}, the local encryption time: {:.3f}ms, enc header time: {:.3f}ms, hdr_regen time: {:.3f}, overall = {:.3f}ms".format(
-            num_attrs, num_AMs, local_enc_time, enc_header_gen_time, hdr_regeneration_by_enc_time, overall_enc_time))
+        "With the configurations: num atts: {}, num_AMs: {}, the local encryption time: {:.3f}ms, enc header time: {:.3f}ms, hdr_regen time: {:.3f} = {:.3f}ms * {}, overall = {:.3f}ms".format(
+            num_attrs, num_AMs, local_enc_time, enc_header_gen_time, hdr_regeneration_by_enc_time,
+            average_hdr_regen_time, len(attribute_managers_dict), overall_enc_time))
 
 
 def get_avgeraged_dict(list_of_dicts: List[Dict[str, Dict[str, int]]]):
@@ -271,6 +277,7 @@ def get_avgeraged_dict(list_of_dicts: List[Dict[str, Dict[str, int]]]):
 
 
 def main(simulation_dict):
+    header_regeneration_enabled = simulation_dict['header_regeneration_enabled']
     enc_time_vs_num_attrs_exp_cfg = simulation_dict['enc_time_vs_num_attrs_exp']
     enc_time_vs_num_users_exp_cfg = simulation_dict['enc_time_vs_num_users_exp']
     reported_times_per_AM_pickle_path = enc_time_vs_num_attrs_exp_cfg['reported_times_per_AM_dict_pickle_path']
@@ -285,18 +292,18 @@ def main(simulation_dict):
         print("Simulation round: {}".format(i))
         if enc_time_vs_num_attrs_exp_cfg['enabled']:
             enc_time_vs_num_attrs_dict = enc_time_vs_num_attrs_exp(i, reported_times_per_AM_pickle_path.format(i),
-                                                                   enc_time_vs_num_attrs_exp_cfg)
+                                                                   enc_time_vs_num_attrs_exp_cfg, header_regeneration_enabled=header_regeneration_enabled)
             list_enc_time_vs_num_attrs_dict.append(enc_time_vs_num_attrs_dict)
 
         if enc_time_vs_num_users_exp_cfg['enabled']:
             enc_time_vs_num_users_dict = enc_time_vs_num_users_exp(i, reported_enc_time_vs_num_users_pickle_path.format(i),
-                                                                   enc_time_vs_num_users_exp_cfg)
+                                                                   enc_time_vs_num_users_exp_cfg, header_regeneration_enabled=header_regeneration_enabled)
             list_enc_time_vs_num_users_dict.append(enc_time_vs_num_users_dict)
     # enc_time_vs_num_attrs_dict = get_avgeraged_dict(list_enc_time_vs_num_attrs_dict)
     # print(enc_time_vs_num_attrs_dict)
 
 
-def enc_time_vs_num_users_exp(round_id, pickle_file_path, cfg):
+def enc_time_vs_num_users_exp(round_id, pickle_file_path, cfg, header_regeneration_enabled=True):
     print("Experiment of number of users VS time")
     total_num_attrs = cfg['total_num_attrs'] # TODO:
     min_num_users = cfg['min_num_users']
@@ -358,7 +365,7 @@ def enc_time_vs_num_users_exp(round_id, pickle_file_path, cfg):
                 # The main purpose of the function is to change the value reported_times_per_AM_dict[an_AM]
                 enc_time_vs_num_users_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
                                                             group_obj, mabera, num_AMs, total_num_attrs,
-                                                            reported_times_per_AM_dict, users_cfg_dict, disable_zkp=disable_zkp)
+                                                            reported_times_per_AM_dict, users_cfg_dict, disable_zkp=disable_zkp, header_regeneration_enabled=header_regeneration_enabled)
 
             pickle.dump(reported_times_per_AM_dict, open(pickle_file_path, 'wb'))
     if draw:
@@ -377,7 +384,7 @@ def enc_time_vs_num_users_exp(round_id, pickle_file_path, cfg):
 
 def enc_time_vs_num_users_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
                                                 group_obj, mabera, num_AMs, num_attrs, reported_times_per_AM_dict,
-                                                users_cfg_dict, disable_zkp=False):
+                                                users_cfg_dict, disable_zkp=False, header_regeneration_enabled=True):
     # Initialize the users with their list of attributes.
     for user_name in users_cfg_dict:
         for attr_idx in range(num_attrs):
@@ -455,16 +462,22 @@ def enc_time_vs_num_users_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict,
         # This function is executed by the encryptor. First, The encryptor verifies that the AM calculated the proof
         # correctly. Then, it changes internally the Hdr_m_dict for the decryptor to be able to decrypt.
         tic = time.time()
-        mabera.regenerate_headers_by_encryptor(Hdr_m_dict[an_AM_name], a_xs_dict, PP)
+        if header_regeneration_enabled:
+            mabera.regenerate_headers_by_encryptor(Hdr_m_dict[an_AM_name], a_xs_dict, PP)
         hdr_regeneration_by_enc_time += (time.time() - tic) * 1000
         enc_header_gen_time = max(enc_header_gen_time, am_enc_header_gen_time)
     # print("Hdr: ", Hdr_m_dict)
-    overall_enc_time = local_enc_time + enc_header_gen_time + (hdr_regeneration_by_enc_time - enc_header_gen_time)
+    if header_regeneration_enabled:
+        overall_enc_time = local_enc_time + enc_header_gen_time + (hdr_regeneration_by_enc_time - enc_header_gen_time)
+    else:
+        overall_enc_time = local_enc_time + enc_header_gen_time
     reported_times_per_AM_dict[num_AMs]['num_users'].append(len(users_cfg_dict))
     reported_times_per_AM_dict[num_AMs]['overall_enc_time'].append(overall_enc_time)
+
+    average_hdr_regen_time = hdr_regeneration_by_enc_time / len(attribute_managers_dict)
     print(
-        "With the configurations: num users: {}, num_AMs: {}, the local encryption time: {:.3f}ms, enc header time: {:.3f}ms, hdr_regen time: {:.3f}, overall = {:.3f}ms".format(
-            len(users_cfg_dict), num_AMs, local_enc_time, enc_header_gen_time, hdr_regeneration_by_enc_time, overall_enc_time))
+        "With the configurations: num users: {}, num_AMs: {}, the local encryption time: {:.3f}ms, enc header time: {:.3f}ms, hdr_regen time: {:.3f} = {:.3f}ms * {}, overall = {:.3f}ms".format(
+            len(users_cfg_dict), num_AMs, local_enc_time, enc_header_gen_time, hdr_regeneration_by_enc_time, average_hdr_regen_time, len(attribute_managers_dict), overall_enc_time))
 
 
 def enc_time_vs_num_users_single_cfg_run_CP_ABE(attributes_managers_cfg_list, group_obj, num_attrs, users_cfg_dict, reported_times_per_AM_dict):

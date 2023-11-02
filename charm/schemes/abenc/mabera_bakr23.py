@@ -446,7 +446,7 @@ class MABERA(ABEncMultiAuth):
             KEK_i_theta_u_dict = {'seq(v_y)': v_y_node.sequence_number, 'kek_u': kek_i_theta_u, 'KEK_u': KEK_i_theta_u}
             return KEK_i_theta_u_dict
 
-    def local_encryption(self, A, M, PKs, PP):
+    def local_encryption(self, A, M, PKs, PP, header_regeneration_enabled=True):
         """
         This function is executed by anyone who wants to encrypt a message with an access policy.
         Inputs:
@@ -477,13 +477,14 @@ class MABERA(ABEncMultiAuth):
             attr_full_name = "%s@%s" % (attribute_name, auth)
             rx = self.group.random()
             kx = self.group.random()
-            ax = self.group.random()
-            a_xs_dict[attr_full_name] = ax
+            if header_regeneration_enabled:
+                ax = self.group.random()
+                a_xs_dict[attr_full_name] = ax
             g_kx = PP['g'] ** kx
             C1[u] = (PP['e_gg'] ** secret_shares[u]) * (PKs[auth]['e_gg_alpha_theta'] ** rx)
             C2[u] = PP['g'] ** (-rx)
             C3[u] = PKs[auth]['g_beta_theta'] ** rx * PP['g'] ** zero_shares[u]
-            C4[u] = (self.group.hash(attr_full_name, G1) ** rx) * (g_kx ** ax)
+            C4[u] = (self.group.hash(attr_full_name, G1) ** rx) * (g_kx ** ax) if header_regeneration_enabled else (self.group.hash(attr_full_name, G1) ** rx)
             K_dash[u] = g_kx
             CT = {'policy': A, 'C0': C0, 'C1': C1, 'C2': C2, 'C3': C3, 'C4': C4}
         return CT, K_dash, a_xs_dict
@@ -505,7 +506,7 @@ class MABERA(ABEncMultiAuth):
         assert len(parts) > 1, "No @ char in [attribute@authority] name"
         return parts[0], parts[1], None if len(parts) < 3 else parts[2]
 
-    def generate_ciphertext_headers(self, K_dash, MMK_m, attributes_manager, a_xs_dict, PP: dict):
+    def generate_ciphertext_headers(self, K_dash, MMK_m, attributes_manager, a_xs_dict, PP: dict, header_regeneration_enabled=True):
         """
         This function is mainly performed by the AM and it is the second part of the encryption procedure.
         After the AM generates the headers for the encrypted message, it sends them to the encryptor for him to add the
@@ -519,10 +520,10 @@ class MABERA(ABEncMultiAuth):
             - Hdr_m_dict: The header for the encrypted message.
         """
         Hdr_m_dict = self.generate_ciphertext_headers_by_AM(K_dash, MMK_m, attributes_manager, PP)
-
-        # This function is executed by the encryptor. First, The encryptor verifies that the AM calculated the proof
-        # correctly. Then, it changes internally the Hdr_m_dict for the decryptor to be able to decrypt.
-        self.regenerate_headers_by_encryptor(Hdr_m_dict, a_xs_dict, PP)
+        if header_regeneration_enabled:
+            # This function is executed by the encryptor. First, The encryptor verifies that the AM calculated the proof
+            # correctly. Then, it changes internally the Hdr_m_dict for the decryptor to be able to decrypt.
+            self.regenerate_headers_by_encryptor(Hdr_m_dict, a_xs_dict, PP)
 
         return Hdr_m_dict
 
@@ -574,14 +575,12 @@ class MABERA(ABEncMultiAuth):
         Outputs:
             - It changes the value of the dictionary value 'E(k_x, v_y)' inside Hdr_m_dict.
         """
-
         # The encryptor adds the final part to the header to be used by the decryptors.
-
         for an_attr in Hdr_m_dict.keys():
             for index, _ in enumerate(Hdr_m_dict[an_attr]):
                 hdr_m_y = Hdr_m_dict[an_attr][index]
-                pi_v_y_and_t_m_u = hdr_m_y['proof']
                 if zkp_enabled:
+                    pi_v_y_and_t_m_u = hdr_m_y['proof']
                     self.__verify_correct_header_proof(pi_v_y_and_t_m_u, PP)
                 E_k_x_v_y = hdr_m_y['E(k_x,v_y)']
                 E_dash_k_x_v_y = E_k_x_v_y ** a_xs_dict[an_attr]
