@@ -1,6 +1,7 @@
 import numpy as np
-import math
+import math, os, pickle
 import matplotlib.pyplot as plt
+from mabera_eval_cfg import SIMULATION_DICT
 
 
 def draw_num_leafs_against_num_users(paper_citation_num, bytes_per_node=24):
@@ -42,6 +43,33 @@ def draw_num_leafs_against_num_users(paper_citation_num, bytes_per_node=24):
     plt.show(block=True)
 
 
+def draw_num_users_vs_num_attrs_vs_enc_time(cfg):
+    import numpy as np
+    from matplotlib.lines import Line2D
+    pickle_file_full_path = os.path.abspath(cfg['reported_enc_time_vs_num_users_vs_num_attrs_pickle_path'].format(0))  # Display the output from the first run.
+    reported_times_per_AM_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
+    labels_list = cfg['labels_list']
+    graph_colors_list = cfg['graph_colors_list']
+    fig = plt.figure()
+    ax = plt.axes(projection='3d')
+    # Data for three-dimensional scattered points
+    for idx, num_AMs in enumerate(reported_times_per_AM_dict):
+        xdata = np.array(reported_times_per_AM_dict[num_AMs]['num_users'])
+        ydata = np.array(reported_times_per_AM_dict[num_AMs]['num_attrs'])
+        zdata = np.array(reported_times_per_AM_dict[num_AMs]['overall_enc_time'])
+        zdata = zdata / 1000  # Convert ms to seconds
+        # ax.scatter3D(xdata, ydata, zdata, c=zdata, cmap='viridis', marker='^', label='{}'.format(labels_list[idx]))
+        ax.scatter3D(xdata, ydata, zdata, color='{}'.format(graph_colors_list[idx]), label='{}'.format(labels_list[idx]))
+        surf = ax.plot_trisurf(xdata, ydata, zdata, color='{}'.format(graph_colors_list[idx]), alpha=0.2)
+    # Add a legend to the figure
+    plt.legend(loc="upper right")
+    ax.set_xlabel('Num. users')
+    ax.set_ylabel('Num. attributes')
+    ax.set_zlabel('Overall encryption time (s)')
+    plt.show(block=True)
+
+
 if __name__ == "__main__":
-    DIFFERENTIATE_WITH_PAPER_NUMBER = "[14]"  # This is the citation number in the paper.
-    draw_num_leafs_against_num_users(DIFFERENTIATE_WITH_PAPER_NUMBER)
+    DIFFERENTIATE_WITH_PAPER_NUMBER = "CA-ABE"  # This is the citation number in the paper.
+    # draw_num_leafs_against_num_users(DIFFERENTIATE_WITH_PAPER_NUMBER)
+    draw_num_users_vs_num_attrs_vs_enc_time(SIMULATION_DICT['enc_time_vs_num_users_vs_num_attrs_exp_cfg'])
