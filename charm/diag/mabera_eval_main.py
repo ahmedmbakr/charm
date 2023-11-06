@@ -81,15 +81,16 @@ def enc_dec_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_pa
     if draw:
         fig = plt.figure()
         # Draw the encryption graph.
-        ax = plt.subplot(2, 1, 1)
+        ax = plt.subplot(1, 2, 1)
         plt.xlabel('Num. attributes')
         plt.ylabel('Enc. Time (ms)')
         for idx, num_AMs in enumerate(reported_times_per_AM_dict):
             plt.plot(reported_times_per_AM_dict[num_AMs]['num_attrs'], reported_times_per_AM_dict[num_AMs]['overall_enc_time'], '{}'.format(graph_colors_list[idx]),
                      label='{}'.format(labels_list[idx]))
+        plt.legend()
 
         # Draw the encryption graph.
-        ax = plt.subplot(2, 1, 2)
+        ax = plt.subplot(1, 2, 2)
         plt.xlabel('Num. attributes')
         plt.ylabel('Dec. Time (ms)')
         for idx, num_AMs in enumerate(reported_times_per_AM_dict):
@@ -98,7 +99,6 @@ def enc_dec_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_pa
                      label='{}'.format(labels_list[idx]))
 
         plt.legend()
-        ax = plt.subplot(2, 1, 1)
         plt.show(block=True)
 
     enc_time_vs_num_attrs_time = time.time() - tic
@@ -254,7 +254,7 @@ def enc_dec_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_d
     M = group_obj.random(GT)  # Random message
     attributes_issuer_pks = mabera_f.get_authorities_public_keys_dict(attr_authorities_pk_sk_dict)
     tic = time.time()
-    CT, K_dash, a_xs_dict = mabera.local_encryption(policy, M, attributes_issuer_pks, PP)
+    CT, K_dash, a_xs_dict = mabera.local_encryption(policy, M, attributes_issuer_pks, PP, header_regeneration_enabled=header_regeneration_enabled)
     local_enc_time = (time.time() - tic) * 1000
     # print("CT: ", CT)
     # print("K_dash: ", K_dash)
