@@ -88,6 +88,7 @@ def enc_dec_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_pa
             plt.plot(reported_times_per_AM_dict[num_AMs]['num_attrs'], reported_times_per_AM_dict[num_AMs]['overall_enc_time'], '{}'.format(graph_colors_list[idx]),
                      label='{}'.format(labels_list[idx]))
         plt.legend()
+        plt.title('Enc execution times when num users={}'.format(total_num_users))
 
         # Draw the encryption graph.
         ax = plt.subplot(1, 2, 2)
@@ -99,6 +100,7 @@ def enc_dec_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_pa
                      label='{}'.format(labels_list[idx]))
 
         plt.legend()
+        plt.title('Dec execution times when num users={}'.format(total_num_users))
         plt.show(block=True)
 
     enc_time_vs_num_attrs_time = time.time() - tic
@@ -335,15 +337,15 @@ def main(simulation_dict):
     reported_enc_time_vs_num_users_vs_num_attrs_pickle_path = os.path.abspath(reported_enc_time_vs_num_users_vs_num_attrs_pickle_path)
 
     repeat_simulation_counter = simulation_dict['repeat_simulation_counter']
-    list_enc_time_vs_num_attrs_dict = []
+    list_enc_dec_time_vs_num_attrs_dict = []
     list_enc_time_vs_num_users_dict = []
     list_enc_time_vs_num_users_vs_num_attrs_dict = []
     for i in range(repeat_simulation_counter):
         print("Simulation round: {}".format(i))
         if enc_dec_time_vs_num_attrs_exp_cfg['enabled']:
-            enc_time_vs_num_attrs_dict = enc_dec_time_vs_num_attrs_exp(i, enc_dec_reported_times_per_AM_pickle_path.format(i),
+            enc_dec_time_vs_num_attrs_dict = enc_dec_time_vs_num_attrs_exp(i, enc_dec_reported_times_per_AM_pickle_path.format(i),
                                                                        enc_dec_time_vs_num_attrs_exp_cfg)
-            list_enc_time_vs_num_attrs_dict.append(enc_time_vs_num_attrs_dict)
+            list_enc_dec_time_vs_num_attrs_dict.append(enc_dec_time_vs_num_attrs_dict)
 
         if enc_time_vs_num_users_exp_cfg['enabled']:
             enc_time_vs_num_users_dict = enc_time_vs_num_users_exp(i, reported_enc_time_vs_num_users_pickle_path.format(i),
@@ -355,8 +357,11 @@ def main(simulation_dict):
                                                                    reported_enc_time_vs_num_users_vs_num_attrs_pickle_path.format(i),
                                                                    enc_time_vs_num_users_vs_num_attrs_exp_cfg)
             list_enc_time_vs_num_users_vs_num_attrs_dict.append(enc_time_vs_num_users_vs_num_attrs_dict)
-    # enc_time_vs_num_attrs_dict = get_avgeraged_dict(list_enc_time_vs_num_attrs_dict)
-    # print(enc_time_vs_num_attrs_dict)
+
+    enc_dec_time_vs_num_attrs_dict = get_avgeraged_dict(list_enc_dec_time_vs_num_attrs_dict)
+    pickle.dump(enc_dec_time_vs_num_attrs_dict, open(enc_dec_reported_times_per_AM_pickle_path.format("avg"), 'wb'))
+    # enc_dec_time_vs_num_attrs_dict = get_avgeraged_dict(list_enc_dec_time_vs_num_attrs_dict)
+    # print(enc_dec_time_vs_num_attrs_dict)
 
 
 def enc_time_vs_num_users_exp(round_id, pickle_file_path, cfg, header_regeneration_enabled=True):
@@ -675,23 +680,26 @@ def enc_time_vs_num_users_vs_num_attrs_exp(round_id, pickle_file_path, cfg):
                 pickle.dump(reported_times_per_AM_dict, open(pickle_file_path, 'wb'))
     if draw:
         import numpy as np
+        import matplotlib as mpl
         fig = plt.figure()
         ax = plt.axes(projection='3d')
         # Data for three-dimensional scattered points
+        fake_lines = []
         for idx, num_AMs in enumerate(reported_times_per_AM_dict):
             xdata = np.array(reported_times_per_AM_dict[num_AMs]['num_users'])
             ydata = np.array(reported_times_per_AM_dict[num_AMs]['num_attrs'])
             zdata = np.array(reported_times_per_AM_dict[num_AMs]['overall_enc_time'])
             zdata = zdata / 1000  # Convert ms to seconds
-            # ax.scatter3D(xdata, ydata, zdata, c=zdata, cmap='viridis', marker='^', label='{}'.format(labels_list[idx]))
-            ax.scatter3D(xdata, ydata, zdata, color='{}'.format(graph_colors_list[idx]),
-                         label='{}'.format(labels_list[idx]))
             surf = ax.plot_trisurf(xdata, ydata, zdata, color='{}'.format(graph_colors_list[idx]), alpha=0.2)
+            fake2Dline = mpl.lines.Line2D([0], [0], linestyle="none", c='{}'.format(graph_colors_list[idx]), marker='o')
+            fake_lines.append(fake2Dline)
+        ax.legend(fake_lines, labels_list, numpoints=1)
         # Add a legend to the figure
-        plt.legend(loc="upper right")
+        # plt.legend(loc="upper right")
         ax.set_xlabel('Num. users')
         ax.set_ylabel('Num. attributes')
         ax.set_zlabel('Overall encryption time (s)')
+        # ax.invert_xaxis()
         plt.show(block=True)
 
     enc_time_vs_num_users_time = time.time() - tic
