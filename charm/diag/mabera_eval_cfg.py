@@ -7,20 +7,21 @@ SIMULATION_DICT = {
     'serialization_paths': {
         'serialized_output_folder': 'diag_output'  # The path is relative to this file.
     },
-    'enc_time_vs_num_attrs_exp': {
+    'enc_dec_time_vs_num_attrs_exp': {
         # In this experiment, the number of users is fixed. We want to test the effect of changing the number of
         # attributes over time.
-        'enabled': False,
-        'draw': False,
+        'enabled': True,
+        'draw': True,
         'disable_zkp': True,
+        'header_regeneration_enabled': False,
         'reported_times_per_AM_dict_pickle_path': './diag_output/reported_times_per_AM_dict_pickle_{}.p',
-        'total_num_users': 100,
-        'min_num_attrs_per_user': 1,
-        'max_num_attrs_per_user': 20,
-        'inc_num_attrs_per_user': 10,
-        'number_of_AMs_to_test': ['CA-ABE', 1, 10, 20],
+        'total_num_users': 8,
+        'min_num_attrs': 1,
+        'max_num_attrs': 20,
+        'inc_num_attrs': 10,
+        'number_of_AMs_to_test': [1, 10, 20],
         'graph_colors_list': ['r', 'b', 'g', 'c'],
-        'labels_list': ['CA-ABE', 'Our scheme with 1 AMs', 'Our scheme with 10 AMs', 'Our scheme with 20 AMs']
+        'labels_list': ['CA-ABE', 'Our scheme with 1 AMs', 'Our scheme with 10 AMs', 'Our scheme with 20 AMs'],
     },
     'enc_time_vs_num_users_exp': {
         # In this experiment, the number of attributes is fixed. We want to test the effect of changing the number of
@@ -36,6 +37,7 @@ SIMULATION_DICT = {
         'labels_list': ['CA-ABE', 'Our scheme with 1 AMs', 'Our scheme with 10 AMs', 'Our scheme with 20 AMs'],
         'draw': True,
         'disable_zkp': True,
+        'header_regeneration_enabled': False
     },
     'enc_time_vs_num_users_vs_num_attrs_exp_cfg': {
         # In this experiment, we want to test the effect of changing the number of users and attributes over time.

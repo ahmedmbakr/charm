@@ -15,13 +15,14 @@ import mabera_bakr23 as mabera_f
 import abenc_ca_cpabe_ar17 as cpabe_f
 
 
-def enc_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_path, cfg, header_regeneration_enabled=True):
+def enc_dec_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_path, cfg):
     print("Experiment of number of attributes VS encryption time")
     total_num_users = cfg['total_num_users']
-    min_num_attrs_per_user = cfg['min_num_attrs_per_user']
-    max_num_attrs_per_user = cfg['max_num_attrs_per_user']
-    inc_num_attrs_per_user = cfg['inc_num_attrs_per_user']
+    min_num_attrs = cfg['min_num_attrs']
+    max_num_attrs = cfg['max_num_attrs']
+    inc_num_attrs = cfg['inc_num_attrs']
     disable_zkp = cfg['disable_zkp']
+    header_regeneration_enabled = cfg['header_regeneration_enabled']
     draw = cfg['draw']
     tic = time.time()
     number_of_AMs_to_test = cfg['number_of_AMs_to_test']
@@ -32,7 +33,6 @@ def enc_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_path, 
     attributes_authorities_list = [
         {
             'name': 'TA1',
-            'controlled_attrs_names_list': ['ONE', 'TWO', 'THREE', 'FOUR']
         }
     ]
 
@@ -51,7 +51,7 @@ def enc_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_path, 
     reported_times_per_AM_dict = {}
     for num_AMs in number_of_AMs_to_test:
         original_num_AMs = num_AMs
-        reported_times_per_AM_dict[num_AMs] = {'num_attrs': [], 'overall_enc_time': []}
+        reported_times_per_AM_dict[num_AMs] = {'num_attrs': [], 'overall_enc_time': [], 'overall_dec_time': []}
         users_cfg_dict = {}
         for i in range(total_num_users):
             users_cfg_dict['U' + str(i)] = {'attributes': [], 'associated_AM': 'AM1'}  # This is an initial value.
@@ -67,25 +67,38 @@ def enc_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_path, 
                 users_cfg_dict['U{}'.format(user_idx)]['associated_AM'] = 'AM{}'.format(an_AM_idx)
             attributes_managers_cfg_list.append(an_AM)
 
-        for num_attrs in range(min_num_attrs_per_user, max_num_attrs_per_user, inc_num_attrs_per_user):
+        for num_attrs in range(min_num_attrs, max_num_attrs, inc_num_attrs):
             if original_num_AMs == 'CA-ABE':
                 # The main purpose of the function is to change the value reported_times_per_AM_dict['CA-ABE']
-                 enc_time_vs_num_attrs_single_cfg_run_CP_ABE(attributes_managers_cfg_list, group_obj, num_attrs,
+                 enc_dec_time_vs_num_attrs_single_cfg_run_CP_ABE(attributes_managers_cfg_list, group_obj, num_attrs,
                                                                  users_cfg_dict, reported_times_per_AM_dict)
             else:
                 # The main purpose of the function is to change the value reported_times_per_AM_dict[an_AM]
-                enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
-                                                            group_obj, mabera, num_AMs, num_attrs,
-                                                            reported_times_per_AM_dict, users_cfg_dict, disable_zkp=disable_zkp, header_regeneration_enabled=header_regeneration_enabled)
+                enc_dec_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
+                                                                group_obj, mabera, num_AMs, num_attrs,
+                                                                reported_times_per_AM_dict, users_cfg_dict, disable_zkp=disable_zkp, header_regeneration_enabled=header_regeneration_enabled)
             pickle.dump(reported_times_per_AM_dict, open(reported_times_per_AM_dict_pickle_path, 'wb'))
     if draw:
         fig = plt.figure()
+        # Draw the encryption graph.
+        ax = plt.subplot(2, 1, 1)
         plt.xlabel('Num. attributes')
         plt.ylabel('Enc. Time (ms)')
         for idx, num_AMs in enumerate(reported_times_per_AM_dict):
             plt.plot(reported_times_per_AM_dict[num_AMs]['num_attrs'], reported_times_per_AM_dict[num_AMs]['overall_enc_time'], '{}'.format(graph_colors_list[idx]),
                      label='{}'.format(labels_list[idx]))
+
+        # Draw the encryption graph.
+        ax = plt.subplot(2, 1, 2)
+        plt.xlabel('Num. attributes')
+        plt.ylabel('Dec. Time (ms)')
+        for idx, num_AMs in enumerate(reported_times_per_AM_dict):
+            plt.plot(reported_times_per_AM_dict[num_AMs]['num_attrs'],
+                     reported_times_per_AM_dict[num_AMs]['overall_dec_time'], '{}'.format(graph_colors_list[idx]),
+                     label='{}'.format(labels_list[idx]))
+
         plt.legend()
+        ax = plt.subplot(2, 1, 1)
         plt.show(block=True)
 
     enc_time_vs_num_attrs_time = time.time() - tic
@@ -93,12 +106,15 @@ def enc_time_vs_num_attrs_exp(round_id, reported_times_per_AM_dict_pickle_path, 
     return reported_times_per_AM_dict
 
 
-def enc_time_vs_num_attrs_single_cfg_run_CP_ABE(attributes_managers_cfg_list, group_obj, num_attrs, users_cfg_dict, reported_times_per_AM_dict):
+def enc_dec_time_vs_num_attrs_single_cfg_run_CP_ABE(attributes_managers_cfg_list, group_obj, num_attrs, users_cfg_dict, reported_times_per_AM_dict):
     # Initialize the users with their list of attributes.
-    for user_name in users_cfg_dict:
+    for user_idx, user_name in enumerate(users_cfg_dict):
         for attr_idx in range(num_attrs):
-            if random.random() > 0.5:  # Toss of a coin if this user have this attribute or not.
+            if (user_idx == 0  # U0 has all the attributes to ease the calculation of the decryption later
+                    or random.random() > 0.5):  # Toss of a coin if this user have this attribute or not.
                 users_cfg_dict[user_name]['attributes'].append('ATT{}'.format(attr_idx))
+        if user_idx == 0:
+            dec_user_name = user_name  # Save the name of the user who will be able to decrypt.
     # Build the tree for each AM
     attribute_managers_dict = {}
     for am_cfg in attributes_managers_cfg_list:  # This list will contain only one element.
@@ -153,21 +169,35 @@ def enc_time_vs_num_attrs_single_cfg_run_CP_ABE(attributes_managers_cfg_list, gr
     CT, Hdr = ca_cpabe_ar.reencryption(CT, MMK, PP, attributes_manager)
     reencrypt_time = (time.time() - tic) * 1000
     overall_time = local_enc_time + reencrypt_time
+
+    user_private_keys_dict = users_private_keys_dict[dec_user_name]
+    DSK = user_private_keys_dict['DSK']
+    KEK = user_private_keys_dict['KEK']
+    tic = time.time()
+    recovered_M = ca_cpabe_ar.decrypt(PP, CT, Hdr, DSK, KEK, dec_user_name, attributes_manager)
+    local_dec_time = (time.time() - tic) * 1000
+    # print('Recovered Message: ', recovered_M)
+    assert rand_msg == recovered_M, "FAILED Decryption: message is incorrect"
+
     reported_times_per_AM_dict['CA-ABE']['num_attrs'].append(num_attrs)
     reported_times_per_AM_dict['CA-ABE']['overall_enc_time'].append(overall_time)
+    reported_times_per_AM_dict['CA-ABE']['overall_dec_time'].append(local_dec_time)
     print(
-        "With the configurations: num atts: {}, num_AMs: 'CA-ABE', the local encryption time: {:.3f}ms, enc header time: {:.3f}ms, overall = {:.3f}ms".format(
-            num_attrs, local_enc_time, reencrypt_time, overall_time))
+        "With the configurations: num atts: {}, num_AMs: 'CA-ABE', the local enc time: {:.3f}ms, enc header time: {:.3f}ms, overall enc. time = {:.3f}ms, dec. time = {:.3f}ms".format(
+            num_attrs, local_enc_time, reencrypt_time, overall_time, local_dec_time))
 
 
-def enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
-                                                group_obj, mabera, num_AMs, num_attrs, reported_times_per_AM_dict,
-                                                users_cfg_dict, disable_zkp=False, header_regeneration_enabled=True):
+def enc_dec_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
+                                                    group_obj, mabera, num_AMs, num_attrs, reported_times_per_AM_dict,
+                                                    users_cfg_dict, disable_zkp=False, header_regeneration_enabled=False):
     # Initialize the users with their list of attributes.
-    for user_name in users_cfg_dict:
+    for user_idx, user_name in enumerate(users_cfg_dict):
         for attr_idx in range(num_attrs):
-            if random.random() > 0.5:  # Toss of a coin if this user have this attribute or not.
+            if (user_idx == 0  # U0 has all the attributes to ease the calculation of the decryption later
+                    or random.random() > 0.5):  # Toss of a coin if this user have this attribute or not.
                 users_cfg_dict[user_name]['attributes'].append('ATT{}@TA1'.format(attr_idx))
+        if user_idx == 0:
+            dec_user_name = user_name  # The user who has the required attributes to perform the decryption.
     # Build the tree for each AM
     attribute_managers_dict = {}
     for am_cfg in attributes_managers_cfg_list:
@@ -218,7 +248,7 @@ def enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict,
         users_secret_keys[a_user_name] = {'DSK_i': DSK_i, 'KEK_i': KEK_i, 'gamma_i': gamma_i}
         # print("DSK for user {}: {}".format(a_user_name, users_secret_keys[a_user_name]))
     # Encrypt the message.
-    policy = "att0@TA1"
+    policy = "ATT0@TA1"
     for attr_idx in range(1, num_attrs):
         policy += " and ATT{}@TA1".format(attr_idx)
     M = group_obj.random(GT)  # Random message
@@ -249,13 +279,24 @@ def enc_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict,
         overall_enc_time = local_enc_time + enc_header_gen_time + (hdr_regeneration_by_enc_time - enc_header_gen_time)
     else:
         overall_enc_time = local_enc_time + enc_header_gen_time
+
+    a_user_cfg = users_cfg_dict[dec_user_name]
+    associated_AM_name = a_user_cfg['associated_AM']
+    am = attribute_managers_dict[associated_AM_name]
+    tic = time.time()
+    dec_msg = mabera.decrypt(PP, CT, Hdr_m_dict[associated_AM_name], users_secret_keys[dec_user_name], dec_user_name, dec_user_name, am)
+    local_dec_time = (time.time() - tic) * 1000
+    # print("Decrypted Message: ", dec_msg)
+    assert M == dec_msg, "FAILED Decryption: message is incorrect"
+
     reported_times_per_AM_dict[num_AMs]['num_attrs'].append(num_attrs)
     reported_times_per_AM_dict[num_AMs]['overall_enc_time'].append(overall_enc_time)
+    reported_times_per_AM_dict[num_AMs]['overall_dec_time'].append(local_dec_time)
     average_hdr_regen_time = hdr_regeneration_by_enc_time / len(attribute_managers_dict)
     print(
-        "With the configurations: num atts: {}, num_AMs: {}, the local encryption time: {:.3f}ms, enc header time: {:.3f}ms, hdr_regen time: {:.3f} = {:.3f}ms * {}, overall = {:.3f}ms".format(
+        "With the configurations: num atts: {}, num_AMs: {}, the local encryption time: {:.3f}ms, enc header time: {:.3f}ms, hdr_regen time: {:.3f} = {:.3f}ms * {}, overall enc. = {:.3f}ms, local dec. = {:.3f}ms".format(
             num_attrs, num_AMs, local_enc_time, enc_header_gen_time, hdr_regeneration_by_enc_time,
-            average_hdr_regen_time, len(attribute_managers_dict), overall_enc_time))
+            average_hdr_regen_time, len(attribute_managers_dict), overall_enc_time, local_dec_time))
 
 
 def get_avgeraged_dict(list_of_dicts: List[Dict[str, Dict[str, int]]]):
@@ -279,12 +320,12 @@ def get_avgeraged_dict(list_of_dicts: List[Dict[str, Dict[str, int]]]):
 def main(simulation_dict):
     print("Current configurations: {}".format(simulation_dict))
     header_regeneration_enabled = simulation_dict['header_regeneration_enabled']
-    enc_time_vs_num_attrs_exp_cfg = simulation_dict['enc_time_vs_num_attrs_exp']
+    enc_dec_time_vs_num_attrs_exp_cfg = simulation_dict['enc_dec_time_vs_num_attrs_exp']
     enc_time_vs_num_users_exp_cfg = simulation_dict['enc_time_vs_num_users_exp']
     enc_time_vs_num_users_vs_num_attrs_exp_cfg = simulation_dict['enc_time_vs_num_users_vs_num_attrs_exp_cfg']
     
-    reported_times_per_AM_pickle_path = enc_time_vs_num_attrs_exp_cfg['reported_times_per_AM_dict_pickle_path']
-    reported_times_per_AM_pickle_path = os.path.abspath(reported_times_per_AM_pickle_path)
+    enc_dec_reported_times_per_AM_pickle_path = enc_dec_time_vs_num_attrs_exp_cfg['reported_times_per_AM_dict_pickle_path']
+    enc_dec_reported_times_per_AM_pickle_path = os.path.abspath(enc_dec_reported_times_per_AM_pickle_path)
     
     reported_enc_time_vs_num_users_pickle_path = enc_time_vs_num_users_exp_cfg['reported_enc_time_vs_num_users_pickle_path']
     reported_enc_time_vs_num_users_pickle_path = os.path.abspath(reported_enc_time_vs_num_users_pickle_path)
@@ -299,9 +340,9 @@ def main(simulation_dict):
     list_enc_time_vs_num_users_vs_num_attrs_dict = []
     for i in range(repeat_simulation_counter):
         print("Simulation round: {}".format(i))
-        if enc_time_vs_num_attrs_exp_cfg['enabled']:
-            enc_time_vs_num_attrs_dict = enc_time_vs_num_attrs_exp(i, reported_times_per_AM_pickle_path.format(i),
-                                                                   enc_time_vs_num_attrs_exp_cfg, header_regeneration_enabled=header_regeneration_enabled)
+        if enc_dec_time_vs_num_attrs_exp_cfg['enabled']:
+            enc_time_vs_num_attrs_dict = enc_dec_time_vs_num_attrs_exp(i, enc_dec_reported_times_per_AM_pickle_path.format(i),
+                                                                       enc_dec_time_vs_num_attrs_exp_cfg)
             list_enc_time_vs_num_attrs_dict.append(enc_time_vs_num_attrs_dict)
 
         if enc_time_vs_num_users_exp_cfg['enabled']:
@@ -335,7 +376,6 @@ def enc_time_vs_num_users_exp(round_id, pickle_file_path, cfg, header_regenerati
     attributes_authorities_list = [
         {
             'name': 'TA1',
-            'controlled_attrs_names_list': ['ONE', 'TWO', 'THREE', 'FOUR']
         }
     ]
 
@@ -455,7 +495,7 @@ def enc_time_vs_num_users_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict,
         users_secret_keys[a_user_name] = {'DSK_i': DSK_i, 'KEK_i': KEK_i, 'gamma_i': gamma_i}
         # print("DSK for user {}: {}".format(a_user_name, users_secret_keys[a_user_name]))
     # Encrypt the message.
-    policy = "att0@TA1"
+    policy = "ATT0@TA1"
     for attr_idx in range(1, num_attrs):
         policy += " and ATT{}@TA1".format(attr_idx)
     M = group_obj.random(GT)  # Random message
@@ -586,7 +626,6 @@ def enc_time_vs_num_users_vs_num_attrs_exp(round_id, pickle_file_path, cfg):
     attributes_authorities_list = [
         {
             'name': 'TA1',
-            'controlled_attrs_names_list': ['ONE', 'TWO', 'THREE', 'FOUR']
         }
     ]
 
@@ -644,7 +683,11 @@ def enc_time_vs_num_users_vs_num_attrs_exp(round_id, pickle_file_path, cfg):
             ydata = np.array(reported_times_per_AM_dict[num_AMs]['num_attrs'])
             zdata = np.array(reported_times_per_AM_dict[num_AMs]['overall_enc_time'])
             zdata = zdata / 1000  # Convert ms to seconds
-            ax.scatter3D(xdata, ydata, zdata, c=zdata, cmap='viridis', marker='^', label='{}'.format(labels_list[idx]))
+            # ax.scatter3D(xdata, ydata, zdata, c=zdata, cmap='viridis', marker='^', label='{}'.format(labels_list[idx]))
+            ax.scatter3D(xdata, ydata, zdata, color='{}'.format(graph_colors_list[idx]),
+                         label='{}'.format(labels_list[idx]))
+            surf = ax.plot_trisurf(xdata, ydata, zdata, color='{}'.format(graph_colors_list[idx]), alpha=0.2)
+        # Add a legend to the figure
         plt.legend(loc="upper right")
         ax.set_xlabel('Num. users')
         ax.set_ylabel('Num. attributes')
