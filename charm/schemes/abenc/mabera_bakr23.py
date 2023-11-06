@@ -480,11 +480,13 @@ class MABERA(ABEncMultiAuth):
             if header_regeneration_enabled:
                 ax = self.group.random()
                 a_xs_dict[attr_full_name] = ax
+            else:
+                ax = 1
             g_kx = PP['g'] ** kx
             C1[u] = (PP['e_gg'] ** secret_shares[u]) * (PKs[auth]['e_gg_alpha_theta'] ** rx)
             C2[u] = PP['g'] ** (-rx)
             C3[u] = PKs[auth]['g_beta_theta'] ** rx * PP['g'] ** zero_shares[u]
-            C4[u] = (self.group.hash(attr_full_name, G1) ** rx) * (g_kx ** ax) if header_regeneration_enabled else (self.group.hash(attr_full_name, G1) ** rx)
+            C4[u] = (self.group.hash(attr_full_name, G1) ** rx) * (g_kx ** ax)
             K_dash[u] = g_kx
             CT = {'policy': A, 'C0': C0, 'C1': C1, 'C2': C2, 'C3': C3, 'C4': C4}
         return CT, K_dash, a_xs_dict
@@ -519,7 +521,7 @@ class MABERA(ABEncMultiAuth):
         Outputs:
             - Hdr_m_dict: The header for the encrypted message.
         """
-        Hdr_m_dict = self.generate_ciphertext_headers_by_AM(K_dash, MMK_m, attributes_manager, PP)
+        Hdr_m_dict = self.generate_ciphertext_headers_by_AM(K_dash, MMK_m, attributes_manager, PP, zkp_enabled=True)
         if header_regeneration_enabled:
             # This function is executed by the encryptor. First, The encryptor verifies that the AM calculated the proof
             # correctly. Then, it changes internally the Hdr_m_dict for the decryptor to be able to decrypt.
@@ -672,8 +674,10 @@ class MABERA(ABEncMultiAuth):
                 for user_node in user_path:
                     if user_node.sequence_number == hdr_elem['seq']:
                         found = True
+                        break
                 if found:
                     chosen_Hdr_element = hdr_elem
+                    break
             E_k_x_v_y = chosen_Hdr_element['E(k_x,v_y)']
             C1_x = CT['C1'][attr_name_with_idx]
             C2_x = CT['C2'][attr_name_with_idx]
