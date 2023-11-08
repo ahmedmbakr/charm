@@ -74,7 +74,7 @@ def draw_num_users_vs_num_attrs_vs_enc_time(cfg):
 
 
 def draw_enc_dec_times_vs_num_attributes(cfg):
-    pickle_file_full_path = os.path.abspath(cfg['reported_times_per_AM_dict_pickle_path'].format(0))
+    pickle_file_full_path = os.path.abspath(cfg['reported_times_per_AM_dict_pickle_path'].format(4))
     reported_times_per_AM_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
     total_num_users = cfg['total_num_users']
     labels_list = cfg['labels_list']
@@ -105,9 +105,42 @@ def draw_enc_dec_times_vs_num_attributes(cfg):
     plt.title('Dec execution times when num users={}'.format(total_num_users))
     plt.show(block=True)
 
+def draw_all_attrs(cfg):
+    import pandas as pd
+    pickle_file_full_path = os.path.abspath(cfg['reported_all_algorithm_times_pickle_path'].format(0))
+    reported_times_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
+    ca_abe_reported_times_dict = reported_times_dict['CA-ABE']
+    mabera_reported_times_dict = reported_times_dict['MABERA']
+    total_num_users = cfg['total_num_users']
+    total_num_attrs = cfg['total_num_attrs']
+    labels_list = cfg['labels_list']
+    graph_colors_list = cfg['graph_colors_list']
+
+    # plotdata  = pd.DataFrame({
+    #     'CA-ABE': [ca_abe_reported_times_dict['auth_setup_time'], ca_abe_reported_times_dict['manager_setup_time'], ca_abe_reported_times_dict['key_gen_time'], ca_abe_reported_times_dict['enc_time'], ca_abe_reported_times_dict['dec_time']],
+    #     'MABERA': [mabera_reported_times_dict['auth_setup_time'], mabera_reported_times_dict['manager_setup_time'], mabera_reported_times_dict['key_gen_time'], mabera_reported_times_dict['enc_time'], mabera_reported_times_dict['dec_time']]
+    # }, index=['auth_setup_time', 'manager_setup_time', 'key_gen_time', 'enc_time', 'dec_time'])
+    draw_dict = {}
+
+    plotdata = pd.DataFrame({
+        labels_list[0]: [ca_abe_reported_times_dict['auth_setup_time'], ca_abe_reported_times_dict['manager_setup_time'],
+                   ca_abe_reported_times_dict['key_gen_time'],
+                   ca_abe_reported_times_dict['dec_time']],
+        labels_list[1]: [mabera_reported_times_dict['auth_setup_time'], mabera_reported_times_dict['manager_setup_time'],
+                   mabera_reported_times_dict['key_gen_time'],
+                   mabera_reported_times_dict['dec_time']]
+    }, index=['auth_setup', 'manager_setup', 'key_gen', 'dec'])
+
+    plotdata.plot(kind="barh", figsize=(15, 8), color=graph_colors_list)
+    plt.title('Algorithms execution times when num users={}, num attrs={}'.format(total_num_users, total_num_attrs))
+    plt.xlabel("Algorithms")
+    plt.ylabel("Execution time (ms)")
+    plt.show(block=True)
+
 
 if __name__ == "__main__":
     DIFFERENTIATE_WITH_PAPER_NUMBER = "CA-ABE"  # This is the citation number in the paper.
     # draw_num_leafs_against_num_users(DIFFERENTIATE_WITH_PAPER_NUMBER)
     # draw_num_users_vs_num_attrs_vs_enc_time(SIMULATION_DICT['enc_time_vs_num_users_vs_num_attrs_exp_cfg'])
-    draw_enc_dec_times_vs_num_attributes(SIMULATION_DICT['enc_dec_time_vs_num_attrs_exp'])
+    # draw_enc_dec_times_vs_num_attributes(SIMULATION_DICT['enc_dec_time_vs_num_attrs_exp'])
+    draw_all_attrs(SIMULATION_DICT['report_all_algorithm_times_exp_cfg'])
