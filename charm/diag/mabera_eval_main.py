@@ -158,6 +158,7 @@ def enc_dec_time_vs_num_attrs_single_cfg_run_CP_ABE(attributes_managers_cfg_list
                                               UMK, users_kek_i)
         users_private_keys_dict[user_name] = {'DSK': DSK, 'KEK': KEK}
         # print("KEK for {}: {}".format(user_name, users_private_keys_dict[user_name]))
+        break  # AB: It is enough to generate the keys for only the first user, since he is the one who will decrypt.
 
     # Encrypt the message
     rand_msg = group_obj.random(GT)
@@ -249,6 +250,8 @@ def enc_dec_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_d
 
         users_secret_keys[a_user_name] = {'DSK_i': DSK_i, 'KEK_i': KEK_i, 'gamma_i': gamma_i}
         # print("DSK for user {}: {}".format(a_user_name, users_secret_keys[a_user_name]))
+        break  # AB: It is enough to generate the keys for only the first user, since he is the one who will decrypt.
+
     # Encrypt the message.
     policy = "ATT0@TA1"
     for attr_idx in range(1, num_attrs):
@@ -487,30 +490,33 @@ def enc_time_vs_num_users_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict,
         MMK_m, MPK_m = mabera.manager_setup(attributes_names_list, PP)
         attr_managers_pk_sk_dict[am_name] = {'MMK_m': MMK_m, 'MPK_m': MPK_m}
         # print("Manager {}: {}".format(am_name, attr_managers_pk_sk_dict[am_name]))
-    # Generate users secret keys
-    users_secret_keys = {}
-    for a_user_name, a_user_cfg in users_cfg_dict.items():
-        UID = a_user_name
-        attributes_dict = mabera_f.get_attributes_categorized_by_AI_dict(a_user_cfg['attributes'])  # AI name is the key
-        associated_AM_name = a_user_cfg['associated_AM']
-        MPK_m = attr_managers_pk_sk_dict[associated_AM_name]['MPK_m']
-        DSK_i = {'D_u_dict': {}, 'D_u_dash_dict': {}}
-        kek_init = {}
-        g_gamma, gamma_i = mabera.attribute_key_gen_user_part(PP['g'])
 
-        for AI_name, attrs_list_by_AI in attributes_dict.items():
-            SK_theta = attr_authorities_pk_sk_dict[AI_name]['SK_theta']
-            DSK_i_theta, kek_theta = mabera.attribute_key_gen(attrs_list_by_AI, SK_theta, UID, MPK_m, PP,
-                                                              g_gamma, gamma_i)
-            kek_init.update(kek_theta)
-            DSK_i['D_u_dict'].update(DSK_i_theta['D_u_dict'])
-            DSK_i['D_u_dash_dict'].update(DSK_i_theta['D_u_dash_dict'])
+    # Commented because it is not needed for the calculation of time, which will save time.
+    # # Generate users secret keys
+    # users_secret_keys = {}
+    # for a_user_name, a_user_cfg in users_cfg_dict.items():
+    #     UID = a_user_name
+    #     attributes_dict = mabera_f.get_attributes_categorized_by_AI_dict(a_user_cfg['attributes'])  # AI name is the key
+    #     associated_AM_name = a_user_cfg['associated_AM']
+    #     MPK_m = attr_managers_pk_sk_dict[associated_AM_name]['MPK_m']
+    #     DSK_i = {'D_u_dict': {}, 'D_u_dash_dict': {}}
+    #     kek_init = {}
+    #     g_gamma, gamma_i = mabera.attribute_key_gen_user_part(PP['g'])
+    #
+    #     for AI_name, attrs_list_by_AI in attributes_dict.items():
+    #         SK_theta = attr_authorities_pk_sk_dict[AI_name]['SK_theta']
+    #         DSK_i_theta, kek_theta = mabera.attribute_key_gen(attrs_list_by_AI, SK_theta, UID, MPK_m, PP,
+    #                                                           g_gamma, gamma_i)
+    #         kek_init.update(kek_theta)
+    #         DSK_i['D_u_dict'].update(DSK_i_theta['D_u_dict'])
+    #         DSK_i['D_u_dash_dict'].update(DSK_i_theta['D_u_dash_dict'])
+    #
+    #     AM_obj = attribute_managers_dict[associated_AM_name]
+    #     KEK_i = mabera.user_attributes_kek_generation(kek_init, AM_obj, a_user_cfg['attributes'], a_user_name)
+    #
+    #     users_secret_keys[a_user_name] = {'DSK_i': DSK_i, 'KEK_i': KEK_i, 'gamma_i': gamma_i}
+    #     # print("DSK for user {}: {}".format(a_user_name, users_secret_keys[a_user_name]))
 
-        AM_obj = attribute_managers_dict[associated_AM_name]
-        KEK_i = mabera.user_attributes_kek_generation(kek_init, AM_obj, a_user_cfg['attributes'], a_user_name)
-
-        users_secret_keys[a_user_name] = {'DSK_i': DSK_i, 'KEK_i': KEK_i, 'gamma_i': gamma_i}
-        # print("DSK for user {}: {}".format(a_user_name, users_secret_keys[a_user_name]))
     # Encrypt the message.
     policy = "ATT0@TA1"
     for attr_idx in range(1, num_attrs):
@@ -587,20 +593,21 @@ def enc_time_vs_num_users_single_cfg_run_CP_ABE(attributes_managers_cfg_list, gr
     # print("MMK_m: ", MMK)
     # print("MPK_m: ", MPK)
 
-    # Generate users KEK
-    UMK = {}  # A value stored privately by TA for each user.
-    users_private_keys_dict = {}
-    users_kek_i = {}  # Held privately by AM
-    for user_name in users_cfg_dict:
-        # Attribute key generation. Executed by TA.
-        if user_name not in attributes_manager.users_to_attrs_dict:
-            continue # This means that the user does not have any attributes.
-        user_attribute_names_list = attributes_manager.users_to_attrs_dict[user_name]
-        # KEK generation by AM.
-        DSK, KEK = ca_cpabe_ar.key_generation(PP, MK, MPK, user_attribute_names_list, user_name, attributes_manager,
-                                              UMK, users_kek_i)
-        users_private_keys_dict[user_name] = {'DSK': DSK, 'KEK': KEK}
-        # print("KEK for {}: {}".format(user_name, users_private_keys_dict[user_name]))
+    # Commented because it is not needed for the calculation of time, which will save time.
+    # # Generate users KEK
+    # UMK = {}  # A value stored privately by TA for each user.
+    # users_private_keys_dict = {}
+    # users_kek_i = {}  # Held privately by AM
+    # for user_name in users_cfg_dict:
+    #     # Attribute key generation. Executed by TA.
+    #     if user_name not in attributes_manager.users_to_attrs_dict:
+    #         continue # This means that the user does not have any attributes.
+    #     user_attribute_names_list = attributes_manager.users_to_attrs_dict[user_name]
+    #     # KEK generation by AM.
+    #     DSK, KEK = ca_cpabe_ar.key_generation(PP, MK, MPK, user_attribute_names_list, user_name, attributes_manager,
+    #                                           UMK, users_kek_i)
+    #     users_private_keys_dict[user_name] = {'DSK': DSK, 'KEK': KEK}
+    #     # print("KEK for {}: {}".format(user_name, users_private_keys_dict[user_name]))
 
     # Encrypt the message
     rand_msg = group_obj.random(GT)
@@ -720,7 +727,7 @@ def enc_time_vs_num_users_vs_num_attrs_exp(round_id, pickle_file_path, cfg):
 
 
 def all_algos_times_exp(round_id, pickle_file_path, cfg, header_regeneration_enabled=True):
-    print("Experiment of number of users VS encryption time")
+    print("Experiment of all algorithms run time")
     total_num_attrs = cfg['total_num_attrs']
     total_num_users = cfg['total_num_users']
     disable_zkp = cfg['disable_zkp']
