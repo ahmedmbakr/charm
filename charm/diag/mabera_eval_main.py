@@ -304,24 +304,6 @@ def enc_dec_time_vs_num_attrs_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_d
             average_hdr_regen_time, len(attribute_managers_dict), overall_enc_time, local_dec_time))
 
 
-def get_avgeraged_dict(list_of_dicts: List[Dict[str, Dict[str, int]]]):
-    avg_dict = {}
-    for simulation_round_dict in list_of_dicts:
-        for a_graph_key in simulation_round_dict:
-            if a_graph_key not in avg_dict:
-                avg_dict[a_graph_key] = {}
-            for attr_name in simulation_round_dict[a_graph_key]:
-                if 'time' not in attr_name:
-                    avg_dict[a_graph_key][attr_name] = simulation_round_dict[a_graph_key][attr_name][0]
-                    continue
-                if attr_name not in avg_dict[a_graph_key]:
-                    avg_dict[a_graph_key][attr_name] = [0] * len(simulation_round_dict[a_graph_key][attr_name])
-                for idx, elem in enumerate(simulation_round_dict[a_graph_key][attr_name]):
-                    avg_dict[a_graph_key][attr_name][idx] += elem / len(list_of_dicts)
-
-    return avg_dict
-
-
 def main(simulation_dict):
     print("Current configurations: {}".format(simulation_dict))
     header_regeneration_enabled = simulation_dict['header_regeneration_enabled']
@@ -373,9 +355,6 @@ def main(simulation_dict):
                                                 all_algos_times_exp_cfg)
             list_all_algos_times_dict.append(all_algos_times_dict)
 
-    enc_dec_time_vs_num_attrs_dict = get_avgeraged_dict(list_enc_dec_time_vs_num_attrs_dict)
-    pickle.dump(enc_dec_time_vs_num_attrs_dict, open(enc_dec_reported_times_per_AM_pickle_path.format("avg"), 'wb'))
-    # enc_dec_time_vs_num_attrs_dict = get_avgeraged_dict(list_enc_dec_time_vs_num_attrs_dict)
     # print(enc_dec_time_vs_num_attrs_dict)
 
 

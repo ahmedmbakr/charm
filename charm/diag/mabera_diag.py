@@ -1,9 +1,10 @@
+import copy
 import numpy as np
 import math, os, pickle
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from mabera_eval_cfg import SIMULATION_DICT
-
+from typing import List, Tuple, Dict
 
 def draw_num_leafs_against_num_users(paper_citation_num, bytes_per_node=24):
     """This function is to show that our scheme is more efficient for large number of users, as their solution has only
@@ -44,11 +45,18 @@ def draw_num_leafs_against_num_users(paper_citation_num, bytes_per_node=24):
     plt.show(block=True)
 
 
-def draw_num_users_vs_num_attrs_vs_enc_time(cfg):
+def draw_num_users_vs_num_attrs_vs_enc_time(cfg, pickle_num='avg', repeat_simulation_counter=None):
     import numpy as np
     from matplotlib.lines import Line2D
-    pickle_file_full_path = os.path.abspath(cfg['reported_enc_time_vs_num_users_vs_num_attrs_pickle_path'].format(0))  # Display the output from the first run.
-    reported_times_per_AM_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
+
+    path_before_substitution_str = cfg['reported_enc_time_vs_num_users_vs_num_attrs_pickle_path']
+    if pickle_num == 'avg':
+        reported_times_per_AM_dict = get_avgeraged_dict(path_before_substitution_str, repeat_simulation_counter)
+    else:
+        pickle_file_full_path = os.path.abspath(
+            path_before_substitution_str.format(pickle_num))  # Display the output from the first run.
+        reported_times_per_AM_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
+
     labels_list = cfg['labels_list']
     graph_colors_list = cfg['graph_colors_list']
     fig = plt.figure()
@@ -73,9 +81,15 @@ def draw_num_users_vs_num_attrs_vs_enc_time(cfg):
     plt.show(block=True)
 
 
-def draw_enc_dec_times_vs_num_attributes(cfg):
-    pickle_file_full_path = os.path.abspath(cfg['reported_times_per_AM_dict_pickle_path'].format(4))
-    reported_times_per_AM_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
+def draw_enc_dec_times_vs_num_attributes(cfg, pickle_num='avg', repeat_simulation_counter=None):
+    path_before_substitution_str = cfg['reported_times_per_AM_dict_pickle_path']
+    if pickle_num == 'avg':
+        reported_times_per_AM_dict = get_avgeraged_dict(path_before_substitution_str, repeat_simulation_counter)
+    else:
+        pickle_file_full_path = os.path.abspath(
+            path_before_substitution_str.format(pickle_num))  # Display the output from the first run.
+        reported_times_per_AM_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
+
     total_num_users = cfg['total_num_users']
     labels_list = cfg['labels_list']
     graph_colors_list = cfg['graph_colors_list']
@@ -105,10 +119,16 @@ def draw_enc_dec_times_vs_num_attributes(cfg):
     plt.title('Dec execution times when num users={}'.format(total_num_users))
     plt.show(block=True)
 
-def draw_all_attrs(cfg):
+def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None):
     import pandas as pd
-    pickle_file_full_path = os.path.abspath(cfg['reported_all_algorithm_times_pickle_path'].format(0))
-    reported_times_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
+    path_before_substitution_str = cfg['reported_all_algorithm_times_pickle_path']
+    if pickle_num == 'avg':
+        reported_times_dict = get_avgeraged_dict(path_before_substitution_str, repeat_simulation_counter)
+    else:
+        pickle_file_full_path = os.path.abspath(
+            path_before_substitution_str.format(pickle_num))  # Display the output from the first run.
+        reported_times_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
+
     ca_abe_reported_times_dict = reported_times_dict['CA-ABE']
     mabera_reported_times_dict = reported_times_dict['MABERA']
     total_num_users = cfg['total_num_users']
@@ -138,9 +158,43 @@ def draw_all_attrs(cfg):
     plt.show(block=True)
 
 
+def get_avgeraged_dict(path_before_substitution_str, num_runs):
+    assert type(num_runs) == int, "Number of runs has to be an integer number"
+
+    # Read the pickle files into a list
+    list_of_dicts = []
+    for run_idx in range(num_runs):
+        pickle_file_full_path = os.path.abspath(
+            path_before_substitution_str.format(run_idx))  # Display the output from the first run.
+        reported_times_per_AM_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
+        list_of_dicts.append(reported_times_per_AM_dict)
+
+    avg_dict = {}
+    for simulation_round_dict in list_of_dicts:
+        for a_graph_key in simulation_round_dict:
+            if a_graph_key not in avg_dict:
+                avg_dict[a_graph_key] = {}
+            for attr_name in simulation_round_dict[a_graph_key]:
+                if 'time' not in attr_name:
+                    if attr_name not in avg_dict[a_graph_key]:
+                        avg_dict[a_graph_key][attr_name] = simulation_round_dict[a_graph_key][attr_name]
+                    continue
+                if attr_name not in avg_dict[a_graph_key]:
+                    if type(simulation_round_dict[a_graph_key][attr_name]) == list:
+                        avg_dict[a_graph_key][attr_name] = [0] * len(simulation_round_dict[a_graph_key][attr_name])
+                    else:
+                        avg_dict[a_graph_key][attr_name] = simulation_round_dict[a_graph_key][attr_name]
+                if type(simulation_round_dict[a_graph_key][attr_name]) == list:
+                    for idx, elem in enumerate(simulation_round_dict[a_graph_key][attr_name]):
+                        avg_dict[a_graph_key][attr_name][idx] += elem / len(list_of_dicts)
+
+    return avg_dict
+
+
 if __name__ == "__main__":
+    repeat_simulation_counter = SIMULATION_DICT['repeat_simulation_counter']
     DIFFERENTIATE_WITH_PAPER_NUMBER = "CA-ABE"  # This is the citation number in the paper.
     # draw_num_leafs_against_num_users(DIFFERENTIATE_WITH_PAPER_NUMBER)
-    # draw_num_users_vs_num_attrs_vs_enc_time(SIMULATION_DICT['enc_time_vs_num_users_vs_num_attrs_exp_cfg'])
-    # draw_enc_dec_times_vs_num_attributes(SIMULATION_DICT['enc_dec_time_vs_num_attrs_exp'])
-    draw_all_attrs(SIMULATION_DICT['report_all_algorithm_times_exp_cfg'])
+    draw_num_users_vs_num_attrs_vs_enc_time(SIMULATION_DICT['enc_time_vs_num_users_vs_num_attrs_exp_cfg'], 'avg', repeat_simulation_counter=repeat_simulation_counter)
+    # draw_enc_dec_times_vs_num_attributes(SIMULATION_DICT['enc_dec_time_vs_num_attrs_exp'], 'avg', repeat_simulation_counter=repeat_simulation_counter)
+    # draw_all_attrs(SIMULATION_DICT['report_all_algorithm_times_exp_cfg'], 'avg', repeat_simulation_counter=repeat_simulation_counter)

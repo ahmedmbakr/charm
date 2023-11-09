@@ -14,7 +14,7 @@ SIMULATION_DICT = {
         'draw': False,
         'disable_zkp': True,
         'header_regeneration_enabled': False,
-        'reported_times_per_AM_dict_pickle_path': './diag_output/reported_times_per_AM_dict_pickle_{}.p',
+        'reported_times_per_AM_dict_pickle_path': './diag_output/reported_enc_dec_time_vs_num_attrs_pickle_{}.p',
         'total_num_users': 1000,
         'min_num_attrs': 1,
         'max_num_attrs': 51,
