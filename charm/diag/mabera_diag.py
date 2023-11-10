@@ -42,6 +42,7 @@ def draw_num_leafs_against_num_users(paper_citation_num, bytes_per_node=24):
         plt.plot(num_users_list, num_tree_nodes_dict[num_AMs], '{}'.format(graph_colors_list[idx]),
                  label='{}'.format(labels_list[idx]))
     plt.legend()
+    plt.grid(True, linestyle='--', linewidth=0.5, color='gray', alpha=0.5)
     # fig.show()
     plt.show(block=True)
 
@@ -117,6 +118,7 @@ def draw_enc_dec_times_vs_num_attributes(cfg, pickle_num='avg', repeat_simulatio
                  label='{}'.format(labels_list[idx]))
 
     plt.legend()
+    plt.grid(True, linestyle='--', linewidth=0.5, color='gray', alpha=0.5)
     # plt.title('Decryption execution times when num. users={}'.format(total_num_users))
     plt.show(block=True)
 
@@ -169,6 +171,7 @@ def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None, show_e
     # plt.title('Algorithms execution times when num users={}, num attrs={}'.format(total_num_users, total_num_attrs))
     plt.ylabel("Algorithms")
     plt.xlabel("Execution time (ms)")
+    plt.grid(True, linestyle='--', linewidth=0.5, color='gray', alpha=0.5)
     if show_encryption_time_enabled:
         plt.xlim([0, 400])  # Adjust the limit for the x-axis
     else:
