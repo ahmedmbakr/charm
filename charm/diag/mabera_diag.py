@@ -6,14 +6,15 @@ import matplotlib.pyplot as plt
 from mabera_eval_cfg import SIMULATION_DICT
 from typing import List, Tuple, Dict
 
+
 def draw_num_leafs_against_num_users(paper_citation_num, bytes_per_node=24):
     """This function is to show that our scheme is more efficient for large number of users, as their solution has only
     one AM, but ours allows the usage of many AMs.
     """
     num_users_list = [10, 10**2, 10**3, 10**4, 10**5, 10**6, 10**7, 10**8] # Fixed x-axis values
-    num_AMs_configurations = [1, 2, 10, 100] # When AM is 1, I mean the paper I am comparing with.
+    num_AMs_configurations = [1, 2, 10, 20] # When AM is 1, I mean the paper I am comparing with.
     graph_colors_list = ['r', 'b', 'g', 'c']
-    labels_list = [paper_citation_num, 'Our scheme with 2 AMs', 'Our scheme with 10 AMs', 'Our scheme with 100 AMs']
+    labels_list = [paper_citation_num, 'Our scheme with 2 AMs', 'Our scheme with 10 AMs', 'Our scheme with 20 AMs']
 
     num_tree_nodes_dict = {} # Calculate number of leafs needed for each categorization
     # Initialize num_leafs_dict for our solution configuration
@@ -71,13 +72,13 @@ def draw_num_users_vs_num_attrs_vs_enc_time(cfg, pickle_num='avg', repeat_simula
         surf = ax.plot_trisurf(xdata, ydata, zdata, color='{}'.format(graph_colors_list[idx]), alpha=0.2)
         fake2Dline = mpl.lines.Line2D([0], [0], linestyle="none", c='{}'.format(graph_colors_list[idx]), marker='o')
         fake_lines.append(fake2Dline)
-    # ax.legend(fake_lines, labels_list, numpoints=1)
+    ax.legend(fake_lines, labels_list, numpoints=1)
     # Add a legend to the figure
     # plt.legend(loc="upper right")
     ax.set_xlabel('Num. users')
     ax.set_ylabel('Num. attributes')
     ax.set_zlabel('Overall encryption time (s)')
-    ax.invert_xaxis()
+    # ax.invert_xaxis()
     plt.show(block=True)
 
 
@@ -95,28 +96,28 @@ def draw_enc_dec_times_vs_num_attributes(cfg, pickle_num='avg', repeat_simulatio
     graph_colors_list = cfg['graph_colors_list']
 
     fig = plt.figure()
-    # Draw the encryption graph.
-    ax = plt.subplot(1, 2, 1)
-    plt.xlabel('Num. attributes')
-    plt.ylabel('Enc. Time (ms)')
-    for idx, num_AMs in enumerate(reported_times_per_AM_dict):
-        plt.plot(reported_times_per_AM_dict[num_AMs]['num_attrs'],
-                 reported_times_per_AM_dict[num_AMs]['overall_enc_time'], '{}'.format(graph_colors_list[idx]),
-                 label='{}'.format(labels_list[idx]))
-    plt.legend()
-    plt.title('Enc execution times when num users={}'.format(total_num_users))
+    # # Draw the encryption graph.
+    # ax = plt.subplot(1, 2, 1)
+    # plt.xlabel('Num. attributes')
+    # plt.ylabel('Enc. Time (ms)')
+    # for idx, num_AMs in enumerate(reported_times_per_AM_dict):
+    #     plt.plot(reported_times_per_AM_dict[num_AMs]['num_attrs'],
+    #              reported_times_per_AM_dict[num_AMs]['overall_enc_time'], '{}'.format(graph_colors_list[idx]),
+    #              label='{}'.format(labels_list[idx]))
+    # plt.legend()
+    # plt.title('Enc execution times when num users={}'.format(total_num_users))
 
-    # Draw the encryption graph.
-    ax = plt.subplot(1, 2, 2)
+    # Draw the decryption graph.
+    # ax = plt.subplot(1, 2, 2)
     plt.xlabel('Num. attributes')
-    plt.ylabel('Dec. Time (ms)')
+    plt.ylabel('Decryption time (ms)')
     for idx, num_AMs in enumerate(reported_times_per_AM_dict):
         plt.plot(reported_times_per_AM_dict[num_AMs]['num_attrs'],
                  reported_times_per_AM_dict[num_AMs]['overall_dec_time'], '{}'.format(graph_colors_list[idx]),
                  label='{}'.format(labels_list[idx]))
 
     plt.legend()
-    plt.title('Dec execution times when num users={}'.format(total_num_users))
+    # plt.title('Decryption execution times when num. users={}'.format(total_num_users))
     plt.show(block=True)
 
 def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None, show_encryption_time_enabled=True):
@@ -147,7 +148,7 @@ def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None, show_e
                        mabera_reported_times_dict['key_gen_time'],
                        mabera_reported_times_dict['enc_time'],
                        mabera_reported_times_dict['dec_time']]
-        }, index=['Auth setup', 'Manager setup', 'Key gen', 'Encryption', 'Decryption'])
+        }, index=['Authority setup', 'Manager setup', 'Key generation', 'Encryption', 'Decryption'])
     else:
         # Without Enc.
         plotdata = pd.DataFrame({
@@ -165,13 +166,11 @@ def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None, show_e
     # ax = plotdata.plot(kind="barh", figsize=(15, 8), color=graph_colors_list, grid=True, logx=True)
     ax = plotdata.plot(kind="barh", figsize=(15, 8), color=graph_colors_list, grid=True)
 
-    plt.title('Algorithms execution times when num users={}, num attrs={}'.format(total_num_users, total_num_attrs))
+    # plt.title('Algorithms execution times when num users={}, num attrs={}'.format(total_num_users, total_num_attrs))
     plt.ylabel("Algorithms")
     plt.xlabel("Execution time (ms)")
     if show_encryption_time_enabled:
-        plt.xlim([0, 3100])  # Adjust the limit for the x-axis
         plt.xlim([0, 400])  # Adjust the limit for the x-axis
-        # plt.xlim([0, 2000])  # Adjust the limit for the x-axis
     else:
         plt.xlim([0, 100])  # Adjust the limit for the x-axis
     plt.show(block=True)
@@ -213,7 +212,7 @@ def get_avgeraged_dict(path_before_substitution_str, num_runs):
 if __name__ == "__main__":
     repeat_simulation_counter = SIMULATION_DICT['repeat_simulation_counter']
     DIFFERENTIATE_WITH_PAPER_NUMBER = "CA-ABE"  # This is the citation number in the paper.
-    # draw_num_leafs_against_num_users(DIFFERENTIATE_WITH_PAPER_NUMBER)
+    draw_num_leafs_against_num_users(DIFFERENTIATE_WITH_PAPER_NUMBER)
     draw_num_users_vs_num_attrs_vs_enc_time(SIMULATION_DICT['enc_time_vs_num_users_vs_num_attrs_exp_cfg'], 'avg', repeat_simulation_counter=repeat_simulation_counter)
-    # draw_enc_dec_times_vs_num_attributes(SIMULATION_DICT['enc_dec_time_vs_num_attrs_exp'], 'avg', repeat_simulation_counter=repeat_simulation_counter)
-    # draw_all_attrs(SIMULATION_DICT['report_all_algorithm_times_exp_cfg'], 'avg', repeat_simulation_counter=repeat_simulation_counter, show_encryption_time_enabled=True)
+    draw_enc_dec_times_vs_num_attributes(SIMULATION_DICT['enc_dec_time_vs_num_attrs_exp'], 3, repeat_simulation_counter=repeat_simulation_counter)
+    draw_all_attrs(SIMULATION_DICT['report_all_algorithm_times_exp_cfg'], 'avg', repeat_simulation_counter=repeat_simulation_counter, show_encryption_time_enabled=True)
