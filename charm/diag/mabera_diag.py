@@ -71,13 +71,13 @@ def draw_num_users_vs_num_attrs_vs_enc_time(cfg, pickle_num='avg', repeat_simula
         surf = ax.plot_trisurf(xdata, ydata, zdata, color='{}'.format(graph_colors_list[idx]), alpha=0.2)
         fake2Dline = mpl.lines.Line2D([0], [0], linestyle="none", c='{}'.format(graph_colors_list[idx]), marker='o')
         fake_lines.append(fake2Dline)
-    ax.legend(fake_lines, labels_list, numpoints=1)
+    # ax.legend(fake_lines, labels_list, numpoints=1)
     # Add a legend to the figure
     # plt.legend(loc="upper right")
     ax.set_xlabel('Num. users')
     ax.set_ylabel('Num. attributes')
     ax.set_zlabel('Overall encryption time (s)')
-    # ax.invert_xaxis()
+    ax.invert_xaxis()
     plt.show(block=True)
 
 
@@ -119,7 +119,7 @@ def draw_enc_dec_times_vs_num_attributes(cfg, pickle_num='avg', repeat_simulatio
     plt.title('Dec execution times when num users={}'.format(total_num_users))
     plt.show(block=True)
 
-def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None):
+def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None, show_encryption_time_enabled=True):
     import pandas as pd
     path_before_substitution_str = cfg['reported_all_algorithm_times_pickle_path']
     if pickle_num == 'avg':
@@ -136,25 +136,44 @@ def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None):
     labels_list = cfg['labels_list']
     graph_colors_list = cfg['graph_colors_list']
 
-    # plotdata  = pd.DataFrame({
-    #     'CA-ABE': [ca_abe_reported_times_dict['auth_setup_time'], ca_abe_reported_times_dict['manager_setup_time'], ca_abe_reported_times_dict['key_gen_time'], ca_abe_reported_times_dict['enc_time'], ca_abe_reported_times_dict['dec_time']],
-    #     'MABERA': [mabera_reported_times_dict['auth_setup_time'], mabera_reported_times_dict['manager_setup_time'], mabera_reported_times_dict['key_gen_time'], mabera_reported_times_dict['enc_time'], mabera_reported_times_dict['dec_time']]
-    # }, index=['auth_setup_time', 'manager_setup_time', 'key_gen_time', 'enc_time', 'dec_time'])
-    draw_dict = {}
+    # With Enc.
+    if show_encryption_time_enabled:
+        plotdata = pd.DataFrame({
+            labels_list[0]: [ca_abe_reported_times_dict['auth_setup_time'], ca_abe_reported_times_dict['manager_setup_time'],
+                       ca_abe_reported_times_dict['key_gen_time'],
+                       ca_abe_reported_times_dict['enc_time'],
+                       ca_abe_reported_times_dict['dec_time']],
+            labels_list[1]: [mabera_reported_times_dict['auth_setup_time'], mabera_reported_times_dict['manager_setup_time'],
+                       mabera_reported_times_dict['key_gen_time'],
+                       mabera_reported_times_dict['enc_time'],
+                       mabera_reported_times_dict['dec_time']]
+        }, index=['Auth setup', 'Manager setup', 'Key gen', 'Encryption', 'Decryption'])
+    else:
+        # Without Enc.
+        plotdata = pd.DataFrame({
+            labels_list[0]: [ca_abe_reported_times_dict['auth_setup_time'],
+                             ca_abe_reported_times_dict['manager_setup_time'],
+                             ca_abe_reported_times_dict['key_gen_time'],
+                             ca_abe_reported_times_dict['dec_time']],
+            labels_list[1]: [mabera_reported_times_dict['auth_setup_time'],
+                             mabera_reported_times_dict['manager_setup_time'],
+                             mabera_reported_times_dict['key_gen_time'],
+                             mabera_reported_times_dict['dec_time']]
+        }, index=['Auth setup', 'Manager setup', 'Key gen', 'Decryption'])
 
-    plotdata = pd.DataFrame({
-        labels_list[0]: [ca_abe_reported_times_dict['auth_setup_time'], ca_abe_reported_times_dict['manager_setup_time'],
-                   ca_abe_reported_times_dict['key_gen_time'],
-                   ca_abe_reported_times_dict['dec_time']],
-        labels_list[1]: [mabera_reported_times_dict['auth_setup_time'], mabera_reported_times_dict['manager_setup_time'],
-                   mabera_reported_times_dict['key_gen_time'],
-                   mabera_reported_times_dict['dec_time']]
-    }, index=['auth_setup', 'manager_setup', 'key_gen', 'dec'])
 
-    plotdata.plot(kind="barh", figsize=(15, 8), color=graph_colors_list)
+    # ax = plotdata.plot(kind="barh", figsize=(15, 8), color=graph_colors_list, grid=True, logx=True)
+    ax = plotdata.plot(kind="barh", figsize=(15, 8), color=graph_colors_list, grid=True)
+
     plt.title('Algorithms execution times when num users={}, num attrs={}'.format(total_num_users, total_num_attrs))
-    plt.xlabel("Algorithms")
-    plt.ylabel("Execution time (ms)")
+    plt.ylabel("Algorithms")
+    plt.xlabel("Execution time (ms)")
+    if show_encryption_time_enabled:
+        plt.xlim([0, 3100])  # Adjust the limit for the x-axis
+        plt.xlim([0, 400])  # Adjust the limit for the x-axis
+        # plt.xlim([0, 2000])  # Adjust the limit for the x-axis
+    else:
+        plt.xlim([0, 100])  # Adjust the limit for the x-axis
     plt.show(block=True)
 
 
@@ -197,4 +216,4 @@ if __name__ == "__main__":
     # draw_num_leafs_against_num_users(DIFFERENTIATE_WITH_PAPER_NUMBER)
     draw_num_users_vs_num_attrs_vs_enc_time(SIMULATION_DICT['enc_time_vs_num_users_vs_num_attrs_exp_cfg'], 'avg', repeat_simulation_counter=repeat_simulation_counter)
     # draw_enc_dec_times_vs_num_attributes(SIMULATION_DICT['enc_dec_time_vs_num_attrs_exp'], 'avg', repeat_simulation_counter=repeat_simulation_counter)
-    # draw_all_attrs(SIMULATION_DICT['report_all_algorithm_times_exp_cfg'], 'avg', repeat_simulation_counter=repeat_simulation_counter)
+    # draw_all_attrs(SIMULATION_DICT['report_all_algorithm_times_exp_cfg'], 'avg', repeat_simulation_counter=repeat_simulation_counter, show_encryption_time_enabled=True)

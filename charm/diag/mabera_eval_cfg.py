@@ -1,6 +1,6 @@
 
 SIMULATION_DICT = {
-    'repeat_simulation_counter': 1,  # How many times you want this simulation to be repeated then an average of the
+    'repeat_simulation_counter': 2,  # How many times you want this simulation to be repeated then an average of the
     'simulation_resume': False,  # Whether you want the simulation to resume from the last simulation iteration
     'header_regeneration_enabled': False,  # Relaxed encryption means that the header re-encryption will not be executed because the AMs are assumed to be honest and that they will not collude with the users.
     # results is reported
@@ -52,20 +52,20 @@ SIMULATION_DICT = {
         'number_of_AMs_to_test': ['CA-ABE', 5, 10, 20],
         'graph_colors_list': ['r', 'b', 'g', 'c'],
         'labels_list': ['CA-ABE', 'Our scheme with 5 AMs', 'Our scheme with 10 AMs', 'Our scheme with 20 AMs'],
-        'draw': True,
+        'draw': False,
         'disable_zkp': True,
-        'header_regeneration_enabled': False
+        'header_regeneration_enabled': True
     },
     'report_all_algorithm_times_exp_cfg': {
         # In this experiment, we want to test the effect of changing the number of users and attributes over time.
         'enabled': True,
         'reported_all_algorithm_times_pickle_path': './diag_output/reported_all_algorithm_times_pickle_{}.p',
         'total_num_attrs': 5,
-        'total_num_users': 1000,
-        'number_of_AMs_to_test': ['CA-ABE', 5],
+        'total_num_users': 100,
+        'number_of_AMs_to_test': ['CA-ABE', 10],
         'graph_colors_list': ['r', 'b'],
-        'labels_list': ['CA-ABE', 'Our scheme with 5 AMs'],
-        'draw': True,
+        'labels_list': ['CA-ABE', 'Our scheme with 10 AMs'],
+        'draw': False,
         'disable_zkp': True,
         'header_regeneration_enabled': False
     },
