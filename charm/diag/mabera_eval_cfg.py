@@ -20,7 +20,7 @@ SIMULATION_DICT = {
         'max_num_attrs': 51,
         'inc_num_attrs': 10,
         'number_of_AMs_to_test': ['CA-ABE', 5, 10, 20],
-        'graph_colors_list': ['r', 'b', 'g', 'c'],
+        'graph_colors_list': ['r.-', 'bx-.', 'g<--', 'c>-.'],
         'labels_list': ['CA-ABE', 'Our scheme with 5 AMs', 'Our scheme with 10 AMs', 'Our scheme with 20 AMs'],
     },
     'enc_time_vs_num_users_exp': {
