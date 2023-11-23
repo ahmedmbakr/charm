@@ -324,7 +324,7 @@ class MABERA(ABEncMultiAuth):
 
         return MMK_m, MPK_m
 
-    def attribute_key_gen(self, attribute_names: List[str], SK_theta, UID, MPK_m, PP, g_gamma, gamma_i):
+    def attribute_key_gen(self, attribute_names: List[str], SK_theta, UID, MPK_m, PP, g_gamma, gamma_i, disable_zkp=False):
         """
         The attribute issuer (AI) executes this function to issue the decryption key used by the user.
         This function is executed by both the user and the attribute authority interactively.
@@ -342,7 +342,8 @@ class MABERA(ABEncMultiAuth):
         """
         g = PP['g']
         # Interactive ZKP by both the user and the AI, where the user proves knowledge of (gamma_i).
-        self.__attribute_key_gen_interactive_ZKP(PP, g_gamma, gamma_i)
+        if not disable_zkp:
+            self.__attribute_key_gen_interactive_ZKP(PP, g_gamma, gamma_i)
 
         DSK_i, kek_dict = self.__attribute_key_gen_by_AI(MPK_m, SK_theta, UID, attribute_names, g, g_gamma)
 

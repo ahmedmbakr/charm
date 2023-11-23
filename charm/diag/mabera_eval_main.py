@@ -1,3 +1,5 @@
+import copy
+
 from mabera_eval_cfg import SIMULATION_DICT
 import glob
 from typing import List, Tuple, Dict
@@ -705,11 +707,12 @@ def enc_time_vs_num_users_vs_num_attrs_exp(round_id, pickle_file_path, cfg):
     return reported_times_per_AM_dict
 
 
-def all_algos_times_exp(round_id, pickle_file_path, cfg, header_regeneration_enabled=True):
+def all_algos_times_exp(round_id, pickle_file_path, cfg):
     print("Experiment of all algorithms run time")
     total_num_attrs = cfg['total_num_attrs']
     total_num_users = cfg['total_num_users']
-    disable_zkp = cfg['disable_zkp']
+    # disable_zkp_list = cfg['disable_zkp']
+    # header_regeneration_enabled = cfg['header_regeneration_enabled']
     draw = cfg['draw']
     tic = time.time()
     number_of_AMs_to_test = cfg['number_of_AMs_to_test']
@@ -768,29 +771,27 @@ def all_algos_times_exp(round_id, pickle_file_path, cfg, header_regeneration_ena
                                                              users_cfg_dict, ca_abe_reported_times_dict)
         else:
             # The main purpose of the function is to change the value reported_times_per_AM_dict[an_AM]
+            mabera_reported_times_dict_trusted_AMs = copy.deepcopy(mabera_reported_times_dict)
+            mabera_reported_times_dict_semi_trusted_AMs = copy.deepcopy(mabera_reported_times_dict)
+            mabera_reported_times_dict_malicious_AMs = copy.deepcopy(mabera_reported_times_dict)
             all_algos_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
                                                         group_obj, mabera, num_AMs, total_num_attrs,
-                                                        mabera_reported_times_dict, users_cfg_dict, disable_zkp=disable_zkp, header_regeneration_enabled=header_regeneration_enabled)
+                                                        mabera_reported_times_dict_trusted_AMs, users_cfg_dict, disable_zkp=True, header_regeneration_enabled=False)
 
-            pickle.dump({'CA-ABE': ca_abe_reported_times_dict , 'MABERA': mabera_reported_times_dict}, open(pickle_file_path, 'wb'))
+            all_algos_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
+                                            group_obj, mabera, num_AMs, total_num_attrs,
+                                            mabera_reported_times_dict_semi_trusted_AMs, users_cfg_dict, disable_zkp=False,
+                                            header_regeneration_enabled=False)
+
+            all_algos_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_managers_cfg_list,
+                                            group_obj, mabera, num_AMs, total_num_attrs,
+                                            mabera_reported_times_dict_malicious_AMs, users_cfg_dict, disable_zkp=False,
+                                            header_regeneration_enabled=True)
+
+            pickle.dump({'CA-ABE': ca_abe_reported_times_dict, 'MABERA_semi_malicious_AMs': mabera_reported_times_dict_malicious_AMs, 'MABERA_semi_trusted_AMs': mabera_reported_times_dict_semi_trusted_AMs, 'MABERA_trusted_AMs': mabera_reported_times_dict_trusted_AMs}, open(pickle_file_path, 'wb'))
     if draw:
-        import pandas as pd
-        plotdata = pd.DataFrame({
-            labels_list[0]: [ca_abe_reported_times_dict['auth_setup_time'],
-                             ca_abe_reported_times_dict['manager_setup_time'],
-                             ca_abe_reported_times_dict['key_gen_time'],
-                             ca_abe_reported_times_dict['dec_time']],
-            labels_list[1]: [mabera_reported_times_dict['auth_setup_time'],
-                             mabera_reported_times_dict['manager_setup_time'],
-                             mabera_reported_times_dict['key_gen_time'],
-                             mabera_reported_times_dict['dec_time']]
-        }, index=['auth_setup', 'manager_setup', 'key_gen', 'dec'])
-
-        plotdata.plot(kind="barh", figsize=(15, 8), color=graph_colors_list)
-        plt.title('Algorithms execution times when num users={}, num attrs={}'.format(total_num_users, total_num_attrs))
-        plt.xlabel("Algorithms")
-        plt.ylabel("Execution time (ms)")
-        plt.show(block=True)
+        print("Drawing is not implemented here. Check mabera_diag.py file")
+        pass
 
     enc_time_vs_num_users_time = time.time() - tic
     print("Time taken to complete round {} of encryption time VS Num users experiment: {:.3f}s".format(round_id, enc_time_vs_num_users_time))
@@ -942,7 +943,7 @@ def all_algos_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_
             SK_theta = attr_authorities_pk_sk_dict[AI_name]['SK_theta']
             tic = time.time()
             DSK_i_theta, kek_theta = mabera.attribute_key_gen(attrs_list_by_AI, SK_theta, UID, MPK_m, PP,
-                                                              g_gamma, gamma_i)
+                                                              g_gamma, gamma_i, disable_zkp=disable_zkp)
             auth_key_gen_part_time = (time.time() - tic) * 1000
             kek_init.update(kek_theta)
             DSK_i['D_u_dict'].update(DSK_i_theta['D_u_dict'])
@@ -980,7 +981,7 @@ def all_algos_single_cfg_run_MABERA(PP, attr_authorities_pk_sk_dict, attributes_
         MMK_m = attr_managers_pk_sk_dict[an_AM_name]['MMK_m']
         tic = time.time()
         Hdr_m_dict[an_AM_name] = mabera.generate_ciphertext_headers_by_AM(K_dash, MMK_m, am, PP,
-                                                                          zkp_enabled=disable_zkp)
+                                                                          zkp_enabled=not disable_zkp)
         am_enc_header_gen_time = (time.time() - tic) * 1000
         # This function is executed by the encryptor. First, The encryptor verifies that the AM calculated the proof
         # correctly. Then, it changes internally the Hdr_m_dict for the decryptor to be able to decrypt.

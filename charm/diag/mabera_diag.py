@@ -44,6 +44,7 @@ def draw_num_leafs_against_num_users(paper_citation_num, bytes_per_node=24, font
     for idx, num_AMs in enumerate(num_AMs_configurations):
         plt.plot(num_users_list, num_tree_nodes_dict[num_AMs], '{}'.format(graph_colors_list[idx]),
                  label='{}'.format(labels_list[idx]))
+    # plt.xscale('log')
     plt.legend(fontsize=fontsize)
     plt.grid(True, linestyle='--', linewidth=0.5, color='gray', alpha=0.5)
     # fig.show()
@@ -175,7 +176,15 @@ def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None, show_e
         reported_times_dict = pickle.load(open(pickle_file_full_path, mode='rb'))
 
     ca_abe_reported_times_dict = reported_times_dict['CA-ABE']
-    mabera_reported_times_dict = reported_times_dict['MABERA']
+    mabera_reported_times_dict_malicious_AMs = reported_times_dict['MABERA_semi_malicious_AMs']
+    mabera_reported_times_dict_semi_trusted_AMs = reported_times_dict['MABERA_semi_trusted_AMs']
+    mabera_reported_times_dict_trusted_AMs = reported_times_dict['MABERA_trusted_AMs']
+
+    mabera_reported_times = {}
+    mabera_reported_times['dec_time'] = (mabera_reported_times_dict_malicious_AMs['dec_time'] + mabera_reported_times_dict_semi_trusted_AMs['dec_time'] + mabera_reported_times_dict_trusted_AMs['dec_time']) / 3
+    mabera_reported_times['manager_setup_time'] = (mabera_reported_times_dict_malicious_AMs['manager_setup_time'] + mabera_reported_times_dict_semi_trusted_AMs['manager_setup_time'] + mabera_reported_times_dict_trusted_AMs['manager_setup_time']) / 3
+    mabera_reported_times['auth_setup_time'] = (mabera_reported_times_dict_malicious_AMs['auth_setup_time'] + mabera_reported_times_dict_semi_trusted_AMs['auth_setup_time'] + mabera_reported_times_dict_trusted_AMs['auth_setup_time']) / 3
+
     total_num_users = cfg['total_num_users']
     total_num_attrs = cfg['total_num_attrs']
     labels_list = cfg['labels_list']
@@ -189,11 +198,21 @@ def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None, show_e
                              ca_abe_reported_times_dict['key_gen_time'],
                              ca_abe_reported_times_dict['manager_setup_time'],
                              ca_abe_reported_times_dict['auth_setup_time']],
-            labels_list[1]: [mabera_reported_times_dict['dec_time'],
-                             mabera_reported_times_dict['enc_time'],
-                             mabera_reported_times_dict['key_gen_time'],
-                             mabera_reported_times_dict['manager_setup_time'],
-                             mabera_reported_times_dict['auth_setup_time']]
+            labels_list[1]: [mabera_reported_times['dec_time'],
+                             mabera_reported_times_dict_trusted_AMs['enc_time'],
+                             mabera_reported_times_dict_trusted_AMs['key_gen_time'],
+                             mabera_reported_times['manager_setup_time'],
+                             mabera_reported_times['auth_setup_time']],
+            labels_list[2]: [mabera_reported_times['dec_time'],
+                             mabera_reported_times_dict_semi_trusted_AMs['enc_time'],
+                             mabera_reported_times_dict_semi_trusted_AMs['key_gen_time'],
+                             mabera_reported_times['manager_setup_time'],
+                             mabera_reported_times['auth_setup_time']],
+            # labels_list[3]: [mabera_reported_times['dec_time'],
+            #                  mabera_reported_times_dict_malicious_AMs['enc_time'],
+            #                  mabera_reported_times_dict_malicious_AMs['key_gen_time'],
+            #                  mabera_reported_times['manager_setup_time'],
+            #                  mabera_reported_times['auth_setup_time']]
         }, index=['Decryption', 'Encryption', 'Key\ngeneration', 'Manager\nsetup', 'Authority\nsetup'])
     else:
         # Without Enc.
@@ -202,10 +221,10 @@ def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None, show_e
                              ca_abe_reported_times_dict['manager_setup_time'],
                              ca_abe_reported_times_dict['key_gen_time'],
                              ca_abe_reported_times_dict['dec_time']],
-            labels_list[1]: [mabera_reported_times_dict['auth_setup_time'],
-                             mabera_reported_times_dict['manager_setup_time'],
-                             mabera_reported_times_dict['key_gen_time'],
-                             mabera_reported_times_dict['dec_time']]
+            labels_list[1]: [mabera_reported_times_dict_semi_trusted_AMs['auth_setup_time'],
+                             mabera_reported_times_dict_semi_trusted_AMs['manager_setup_time'],
+                             mabera_reported_times_dict_semi_trusted_AMs['key_gen_time'],
+                             mabera_reported_times_dict_semi_trusted_AMs['dec_time']]
         }, index=['Auth setup', 'Manager setup', 'Key gen', 'Decryption'])
 
 
@@ -218,7 +237,7 @@ def draw_all_attrs(cfg, pickle_num='avg', repeat_simulation_counter=None, show_e
     plt.legend(fontsize=fontsize)
     plt.grid(True, linestyle='--', linewidth=0.5, color='gray', alpha=0.5)
     if show_encryption_time_enabled:
-        plt.xlim([0, 350])  # Adjust the limit for the x-axis
+        plt.xlim([0, 250])  # Adjust the limit for the x-axis
     else:
         plt.xlim([0, 100])  # Adjust the limit for the x-axis
     plt.show(block=True)
