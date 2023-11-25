@@ -52,6 +52,7 @@ def draw_num_leafs_against_num_users(paper_citation_num, bytes_per_node=24, font
 
 
 def draw_num_users_vs_num_attrs_vs_enc_time(cfg, pickle_num='avg', repeat_simulation_counter=None, fontsize=9):
+    num_attrs_threshold = 22 # Any reported number above this will be ignored. This is just used for the final version of the paper # TODO: AB: to be removed.
     import numpy as np
     from matplotlib.lines import Line2D
 
@@ -73,6 +74,7 @@ def draw_num_users_vs_num_attrs_vs_enc_time(cfg, pickle_num='avg', repeat_simula
         xdata = np.array(reported_times_per_AM_dict[num_AMs]['num_users'])
         ydata = np.array(reported_times_per_AM_dict[num_AMs]['num_attrs'])
         zdata = np.array(reported_times_per_AM_dict[num_AMs]['overall_enc_time'])
+        xdata, ydata, zdata = limit_num_atts_to(num_attrs_threshold, xdata, ydata, zdata) # TODO: AB: To be removed.
         zdata = zdata / 1000  # Convert ms to seconds
         surf = ax.plot_trisurf(xdata, ydata, zdata, color='{}'.format(graph_colors_list[idx]), alpha=0.2)
         fake2Dline = mpl.lines.Line2D([0], [0], linestyle="none", c='{}'.format(graph_colors_list[idx]), marker='o', alpha=0.2)
@@ -85,6 +87,20 @@ def draw_num_users_vs_num_attrs_vs_enc_time(cfg, pickle_num='avg', repeat_simula
     ax.set_zlabel('Overall encryption time (s)', fontsize=fontsize)
     # ax.invert_xaxis()
     plt.show(block=True)
+
+
+def limit_num_atts_to(num_attrs_threshold, num_users_data, num_attrs_data, time_data):
+    """If the value reported in num_attrs_data is greater than num_attrs_threshold, it will be neglected."""
+    new_num_users_data = []
+    new_num_attrs_data = []
+    new_time_data = []
+    for num_users, num_attrs, time_val in zip(num_users_data, num_attrs_data, time_data):
+        if num_attrs <= num_attrs_threshold:
+            new_num_users_data.append(num_users)
+            new_num_attrs_data.append(num_attrs)
+            new_time_data.append(time_val)
+
+    return np.array(new_num_users_data), np.array(new_num_attrs_data), np.array(new_time_data)
 
 def draw_num_users_vs_num_attrs_vs_enc_time_in_different_subfigs(cfg, pickle_num='avg', repeat_simulation_counter=None, fontsize=9):
     import numpy as np

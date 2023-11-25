@@ -64,7 +64,7 @@ SIMULATION_DICT = {
         'total_num_users': 100,
         'number_of_AMs_to_test': ['CA-ABE', 10],
         'graph_colors_list': ['r', 'b', 'g', 'c'],
-        'labels_list': ['CA-ABE', 'Our scheme with 10 trusted AMs', 'Our scheme with 10 semi-trusted AMs', 'Our scheme with 10 malicious AMs'],
+        'labels_list': ['CA-ABE with a trusted AM', 'Our scheme with 10 trusted AMs', 'Our scheme with 10 semi-trusted AMs', 'Our scheme with 10 malicious AMs'],
         'draw': False
     },
 }
